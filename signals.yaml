@@ -20,6 +20,7 @@ signals:
     pub_lag_days: 1
     history_start: 2015-01-01
     window: rolling10y
+    series_codes: [WALCL, WTREGEN, RRPONTSYD]
     causal_sentence: Central banks control the water level of the market pool, so rising net liquidity lifts asset prices before the crowd notices the tide.
     elite_watcher: Michael Howell (CrossBorder Capital), Stanley Druckenmiller, Michael Hartnett (BofA)
 
@@ -56,6 +57,7 @@ signals:
     pub_lag_days: 1
     history_start: 2003-01-02
     window: rolling10y
+    series_codes: [DFII10]
     causal_sentence: Gold pays no interest, so when the real yield on safe bonds falls the penalty for holding gold disappears and its price rises.
     elite_watcher: Macro funds' gold desks (Bridgewater), World Gold Council research
 
@@ -68,5 +70,6 @@ signals:
     pub_lag_days: 1
     history_start: 1996-12-31
     window: rolling10y
+    series_codes: [BAMLH0A0HYM2]
     causal_sentence: Credit investors demand extra yield the moment repayment looks shakier, so spreads widen before equity markets admit trouble.
     elite_watcher: Howard Marks (Oaktree), the Federal Reserve's financial-stability monitors
