@@ -75,6 +75,19 @@ signals:
     causal_sentence: Gold pays no interest, so when the real yield on safe bonds falls the penalty for holding gold disappears and its price rises.
     elite_watcher: Macro funds' gold desks (Bridgewater), World Gold Council research
 
+  - series_id: oil_inventories
+    name: US commercial crude oil stocks, EIA weekly (oil's engine)
+    group: D
+    source: EIA
+    source_url: https://api.eia.gov/v2/seriesid/PET.WCESTUS1.W
+    schedule: weekly
+    pub_lag_days: 5  # week ends Friday, report lands the following Wednesday
+    history_start: 1982-08-20
+    window: same_week_5y_avg
+    causal_sentence: Crude stocks below their seasonal norm mean demand is outrunning supply, which lifts oil prices before the shortage makes headlines.
+    elite_watcher: Every oil trading desk (the weekly EIA report is oil's scheduled market-mover), Pierre Andurand
+    series_codes: [PET.WCESTUS1.W]
+
   - series_id: credit_spread
     name: US high-yield option-adjusted spread, FRED BAMLH0A0HYM2 (weather gauge 3)
     group: F

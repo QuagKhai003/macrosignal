@@ -18,9 +18,10 @@
 import datetime as dt
 
 from src import db, registry, spine
-from src.fetchers import cot, fred, prices
+from src.fetchers import cot, eia, fred, prices
 
-FETCHERS = {"FRED": fred.fetch, "CFTC": cot.fetch, "Yahoo": prices.fetch}
+FETCHERS = {"FRED": fred.fetch, "CFTC": cot.fetch, "Yahoo": prices.fetch,
+            "EIA": eia.fetch}
 
 
 def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,

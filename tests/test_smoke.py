@@ -44,7 +44,7 @@ class FredOkSession:
 def test_all_sources_down_still_completes(tmp_path, capsys):
     db_path = tmp_path / "signals.db"
     sessions = {"FRED": DownSession(), "CFTC": DownSession(),
-                "Yahoo": DownSession()}
+                "Yahoo": DownSession(), "EIA": DownSession()}
     assert weekly_run.main(db_path=db_path, today=AS_OF,
                            sessions=sessions) == 0
     assert capsys.readouterr().out.strip().endswith("run complete")
@@ -52,18 +52,18 @@ def test_all_sources_down_still_completes(tmp_path, capsys):
     conn = db.connect(db_path)
     flags = conn.execute("SELECT COUNT(*) FROM journal"
                          " WHERE event_type = 'flag'").fetchone()[0]
-    assert flags == 5  # 3 FRED entries + CFTC + Yahoo, all down
+    assert flags == 6  # 3 FRED entries + CFTC + Yahoo + EIA, all down
     run_detail = conn.execute("SELECT detail FROM journal"
                               " WHERE event_type = 'run'").fetchone()[0]
-    assert "5 fetch failures" in run_detail
-    assert conn.execute("SELECT COUNT(*) FROM series").fetchone()[0] == 5
+    assert "6 fetch failures" in run_detail
+    assert conn.execute("SELECT COUNT(*) FROM series").fetchone()[0] == 6
     conn.close()
 
 
 def test_partial_run_derives_net_liquidity(tmp_path, capsys):
     db_path = tmp_path / "signals.db"
     sessions = {"FRED": FredOkSession(), "CFTC": DownSession(),
-                "Yahoo": DownSession()}
+                "Yahoo": DownSession(), "EIA": DownSession()}
     assert weekly_run.main(db_path=db_path, today=AS_OF,
                            sessions=sessions) == 0
     out = capsys.readouterr().out
@@ -79,7 +79,7 @@ def test_partial_run_derives_net_liquidity(tmp_path, capsys):
     assert abs(rows[1][1] - 5986.71) < 0.001
     run_detail = conn.execute("SELECT detail FROM journal"
                               " WHERE event_type = 'run'").fetchone()[0]
-    assert "2 fetch failures" in run_detail
+    assert "3 fetch failures" in run_detail
     conn.close()
 
 
