@@ -35,10 +35,10 @@ def fetch(entry: dict, conn: sqlite3.Connection, session=None) -> int:
     session = session or requests.Session()
     added = 0
     for series_id, symbol in entry["markets"].items():
+        rows = _rows(session, symbol)  # fetch BEFORE registering the series
         base.ensure_series_row(conn, series_id, entry,
                                f"Yahoo {symbol} (component of {entry['series_id']})")
-        added += base.insert_observations(conn, series_id,
-                                          _rows(session, symbol))
+        added += base.insert_observations(conn, series_id, rows)
     conn.commit()
     return added
 

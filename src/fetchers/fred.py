@@ -41,11 +41,11 @@ def fetch(entry: dict, conn: sqlite3.Connection, session=None) -> int:
     lag = dt.timedelta(days=int(entry["pub_lag_days"]))
     added = 0
     for code in entry["series_codes"]:
+        rows = _rows(session, code, lag)  # fetch BEFORE registering the series
         series_id = f"fred_{code.lower()}"
         base.ensure_series_row(conn, series_id, entry,
                                f"FRED {code} (component of {entry['series_id']})")
-        added += base.insert_observations(conn, series_id,
-                                          _rows(session, code, lag))
+        added += base.insert_observations(conn, series_id, rows)
     conn.commit()
     return added
 
