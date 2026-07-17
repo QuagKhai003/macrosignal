@@ -1,0 +1,25 @@
+# ── workflow / process files (local-only, never committed) ──
+CLAUDE.md
+docs/
+.claude/
+*.plan.md
+*.notes.md
+scratch/
+.notes/
+
+# ── secrets ──
+.env
+
+# ── python ──
+.venv/
+__pycache__/
+*.pyc
+
+# ── dev/test artifacts ──
+coverage/
+.cache/
+*.log
+# tests/    ← stays committed (user chose: tests are product code)
+
+# ── local data (rebuildable from sources) ──
+signals.db
