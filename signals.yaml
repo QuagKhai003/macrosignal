@@ -33,6 +33,14 @@ signals:
     pub_lag_days: 3  # Tuesday data, Friday release
     history_start: 2006-06-13
     window: rolling3y
+    markets:  # series_id -> CFTC contract code + report. Commodities live in the
+      # Disaggregated report (party = Managed Money); financials are NOT in it —
+      # they live in the TFF report (party = Leveraged Funds). Spec-gap fix 2026-07-18.
+      cot_gold: {code: "088691", report: disagg}
+      cot_wti: {code: "067651", report: disagg}
+      cot_ust10y: {code: "043602", report: tff}
+      cot_eur: {code: "099741", report: tff}
+      cot_corn: {code: "002602", report: disagg}
     causal_sentence: Trend-chasing speculators are right mid-trend and wrong at turns, so their positioning extremes mark old crowded trends and their abandonment marks early zones.
     elite_watcher: Managed-futures desks (Man AHL, AQR), veteran COT analysts (Larry Williams)
 
