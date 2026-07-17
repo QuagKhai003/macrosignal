@@ -31,11 +31,14 @@ MARKETS = {
 }
 
 
-def engines(conn: sqlite3.Connection, as_of: str) -> dict:
-    """{market: {"engine": True/False/None, "alive": True/False/None}}"""
+def engines(conn: sqlite3.Connection, as_of: str,
+            prev: dict | None = None) -> dict:
+    """{market: {"engine": True/False/None, "alive": True/False/None}}.
+    prev = {market: last week's engine answer} for hysteresis carry."""
+    prev = prev or {}
     out = {m: {"engine": None, "alive": None} for m in MARKETS}
     out["gold"] = gold_engine(conn, as_of)
-    out["wti"] = oil_engine(conn, as_of)
+    out["wti"] = oil_engine(conn, as_of, prev_engine=prev.get("wti"))
     return out
 
 
@@ -60,11 +63,16 @@ def gold_engine(conn: sqlite3.Connection, as_of: str) -> dict:
     return {"engine": bool(falling and alive), "alive": alive}
 
 
-def oil_engine(conn: sqlite3.Connection, as_of: str) -> dict:
+def oil_engine(conn: sqlite3.Connection, as_of: str,
+               prev_engine: bool | None = None,
+               exit_band: float = 0.02) -> dict:
     """Engine ✓ = commercial crude stocks below their same-calendar-week
     average of the prior 5 years (tightness). Needs >= 4 of 5 prior years
-    within +/-10 days of the anniversary date. Inventory drivers have no
-    correlation-alive concept in v1 -> alive mirrors data presence."""
+    within +/-10 days of the anniversary date. §5b two-trigger hysteresis
+    (rule decision 2026-07-18): turns ✓ below the average, turns ✗ only above
+    (1 + exit_band) x the average; in between the previous answer carries
+    (fresh market in the band -> ✗). Inventory drivers have no correlation-
+    alive concept in v1 -> alive mirrors data presence."""
     rows = spine._series_rows(conn, "oil_inventories", as_of)
     if not rows:
         return {"engine": None, "alive": None}
@@ -80,5 +88,11 @@ def oil_engine(conn: sqlite3.Connection, as_of: str) -> dict:
             priors.append(nearest[2])
     if len(priors) < 4:
         return {"engine": None, "alive": None}
-    return {"engine": bool(latest_value < sum(priors) / len(priors)),
-            "alive": True}
+    average = sum(priors) / len(priors)
+    if latest_value < average:
+        engine = True
+    elif latest_value > (1.0 + exit_band) * average:
+        engine = False
+    else:
+        engine = prev_engine if prev_engine is not None else False
+    return {"engine": engine, "alive": True}

@@ -116,6 +116,24 @@ def test_oil_engine_needs_history(conn):
     assert drivers.oil_engine(conn, AS_OF)["engine"] is None
 
 
+def test_oil_engine_band_carries_previous(conn):
+    # last = 454,500 = 101% of the 450,000 average: inside the (100%, 102%]
+    # band -> previous answer holds; fresh -> off
+    n = 6 * 52
+    values = [450000.0] * (n - 1) + [454500.0]
+    put_weekly(conn, "oil_inventories", values)
+    assert drivers.oil_engine(conn, AS_OF, prev_engine=True)["engine"] is True
+    assert drivers.oil_engine(conn, AS_OF, prev_engine=False)["engine"] is False
+    assert drivers.oil_engine(conn, AS_OF, prev_engine=None)["engine"] is False
+
+
+def test_oil_engine_turns_off_above_band(conn):
+    n = 6 * 52
+    values = [450000.0] * (n - 1) + [459500.0]  # 102.1% of average
+    put_weekly(conn, "oil_inventories", values)
+    assert drivers.oil_engine(conn, AS_OF, prev_engine=True)["engine"] is False
+
+
 def test_engines_shape(conn):
     result = drivers.engines(conn, AS_OF)
     assert set(result) == {"gold", "wti", "ust10y", "eur", "corn"}

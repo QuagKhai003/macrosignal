@@ -63,6 +63,46 @@ def test_sma200_flag_needs_200():
     assert formulas.sma200_flag([100.0] * 199) is None
 
 
+def test_sma200_hysteresis_band_carries_previous():
+    # avg ~100, last 99: inside the [98, 100] band -> previous answer holds
+    closes = [100.0] * 199 + [99.0]
+    assert formulas.sma200_flag(closes, prev=1) == 1
+    assert formulas.sma200_flag(closes, prev=0) == 0
+    assert formulas.sma200_flag(closes, prev=None) == 0  # fresh: conservative
+
+
+def test_sma200_hysteresis_exits_below_band():
+    closes = [100.0] * 199 + [97.0]  # below 98% of the average: red, always
+    assert formulas.sma200_flag(closes, prev=1) == 0
+
+
+# ── F8 party smoothing + two-week confirm ────────────────────────────────────
+
+def test_party_score_damps_weekly_rank_swings():
+    # a one-week spike-and-retreat whipsaws the RAW rank but barely moves the
+    # smoothed one (the 4-wk mean still contains the spike both weeks)
+    week1 = [10.0] * 20 + [100.0]
+    week2 = week1 + [10.0]
+    raw_swing = abs(formulas.pct_rank(week1, 10) - formulas.pct_rank(week2, 10))
+    smooth_swing = abs(formulas.party_score(week1, 10)
+                       - formulas.party_score(week2, 10))
+    assert raw_swing >= 50
+    assert smooth_swing <= 10
+    assert smooth_swing < raw_swing
+
+
+def test_two_week_confirm_blocks_one_week_blips():
+    # effective 0, raw flips to 1 for one week: no change
+    assert formulas.two_week_confirm(1, 0, 0) == 0
+    # raw 1 held two weeks: change goes through
+    assert formulas.two_week_confirm(1, 1, 0) == 1
+    # agreement passes through untouched
+    assert formulas.two_week_confirm(1, 1, 1) == 1
+    # fresh market: raw wins; insufficient stays honest
+    assert formulas.two_week_confirm(1, None, None) == 1
+    assert formulas.two_week_confirm(None, 1, 1) is None
+
+
 # ── F5 net liquidity ─────────────────────────────────────────────────────────
 
 def test_net_liquidity_arithmetic():

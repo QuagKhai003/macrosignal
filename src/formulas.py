@@ -40,13 +40,43 @@ def pct_rank(values, window: int) -> float | None:
     return 100.0 * float((tail < x).sum() + 0.5 * (tail == x).sum()) / n
 
 
-def sma200_flag(closes) -> int | None:
-    """F4: momentum gate. 1 if the last close is above the simple average of
-    the last 200 closes, else 0. None with fewer than 200 closes."""
+def sma200_flag(closes, prev: int | None = None,
+                exit_band: float = 0.02) -> int | None:
+    """F4 momentum gate with the §5b two-trigger hysteresis (rule decision
+    2026-07-18): turns green (1) when the last close is ABOVE the 200-day
+    average; turns red (0) only when it falls BELOW (1 - exit_band) x the
+    average; in between, the previous answer carries (fresh market in the
+    band -> 0, the conservative side). None with fewer than 200 closes."""
     s = _clean(closes)
     if len(s) < 200:
         return None
-    return int(s.iloc[-1] > s.iloc[-200:].mean())
+    last, sma = s.iloc[-1], s.iloc[-200:].mean()
+    if last > sma:
+        return 1
+    if last < (1.0 - exit_band) * sma:
+        return 0
+    return prev if prev is not None else 0
+
+
+def party_score(values, window: int, smooth_weeks: int = 4) -> float | None:
+    """F8 party percentile over a smoothed net position: the percentile is
+    taken on the 4-week moving average of the raw series (rule decision
+    2026-07-18 — positioning is a regime indicator, §3.1; the raw weekly
+    series jumps across whole hysteresis gaps in single weeks)."""
+    smoothed = _clean(values).rolling(smooth_weeks).mean().dropna()
+    return pct_rank(smoothed, window)
+
+
+def two_week_confirm(raw, prev_raw, prev_effective):
+    """Input-level dampener (rule decision 2026-07-18): an input's effective
+    value changes only after the raw value has disagreed with the effective
+    one for 2 consecutive weeks. None raw -> None (insufficient stays
+    honest); no prior effective -> raw."""
+    if prev_effective is None or raw is None:
+        return raw
+    if raw == prev_effective:
+        return raw
+    return raw if raw == prev_raw else prev_effective
 
 
 def net_liquidity(walcl, wtregen, rrpontsyd):

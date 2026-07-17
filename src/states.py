@@ -37,16 +37,24 @@ def run_week(conn: sqlite3.Connection, as_of: dt.date) -> dict:
     """Compute + persist this week's states. Returns {market: state_dict}."""
     week = iso_week(as_of)
     as_of_str = as_of.isoformat()
-    engines = drivers.engines(conn, as_of_str)
+    prior_scores = {m: _prior_scores(conn, m, week) for m in drivers.MARKETS}
+    engines = drivers.engines(conn, as_of_str,
+                              prev={m: s.get("engine")
+                                    for m, s in prior_scores.items()})
     results = {}
     for market, series in drivers.MARKETS.items():
+        prior = prior_scores[market]
+        momentum_raw = formulas.sma200_flag(
+            spine._values(conn, series["price"], as_of_str),
+            prev=prior.get("momentum_raw"))
         obs = {
             "engine": engines[market]["engine"],
             "alive": engines[market]["alive"],
-            "party_pct": formulas.pct_rank(
+            "party_pct": formulas.party_score(
                 spine._values(conn, series["cot"], as_of_str), PARTY_WINDOW),
-            "momentum": formulas.sma200_flag(
-                spine._values(conn, series["price"], as_of_str)),
+            "momentum": formulas.two_week_confirm(
+                momentum_raw, prior.get("momentum_raw"),
+                prior.get("momentum")),
             "news": "quiet",  # Phase 2 stub
         }
         prev = _prior_state(conn, market, week)
@@ -54,6 +62,7 @@ def run_week(conn: sqlite3.Connection, as_of: dt.date) -> dict:
         size = engine.size_fraction(new.state, new.age_weeks, WEATHER_STUB)
         scores = {**{k: obs[k] for k in
                      ("engine", "alive", "party_pct", "momentum", "news")},
+                  "momentum_raw": momentum_raw,
                   "size_fraction": size,
                   "flags": {"party_full": new.party_full,
                             "party_empty": new.party_empty,
@@ -63,6 +72,14 @@ def run_week(conn: sqlite3.Connection, as_of: dt.date) -> dict:
                            "size_fraction": size, **obs}
     conn.commit()
     return results
+
+
+def _prior_scores(conn, market: str, current_week: str) -> dict:
+    """Last week's scores_json dict ({} if none) — feeds hysteresis carries."""
+    row = conn.execute(
+        "SELECT scores_json FROM states WHERE market_id = ? AND week < ?"
+        " ORDER BY week DESC LIMIT 1", (market, current_week)).fetchone()
+    return json.loads(row[0]) if row else {}
 
 
 def previous_states(conn: sqlite3.Connection, current_week: str) -> dict:
