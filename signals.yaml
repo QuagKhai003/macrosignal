@@ -47,12 +47,18 @@ signals:
   - series_id: spine_prices
     name: Daily closes for the 5 spine markets (GC, CL, ZN, EURUSD, ZC) feeding the 200-day momentum gate
     group: F
-    source: stooq
-    source_url: https://stooq.com/q/d/l/?s=gc.f
+    source: Yahoo
+    source_url: https://query1.finance.yahoo.com/v8/finance/chart/GC=F
     schedule: daily
     pub_lag_days: 0
     history_start: 2000-01-01
     window: sma200
+    markets:  # series_id -> Yahoo symbol (stooq is JS-challenge-walled; decision 2026-07-18)
+      price_gold: GC=F
+      price_wti: CL=F
+      price_ust10y: ZN=F
+      price_eur: EURUSD=X
+      price_corn: ZC=F
     causal_sentence: Investors underreact to news and then herd, so a price above its own 200-day average tends to keep drifting the same way.
     elite_watcher: Trend-following funds (AQR, Man AHL, Winton) running the century-validated strategy
 
