@@ -30,7 +30,8 @@ import requests
 
 from src.fetchers import base
 
-HISTORY_YEARS = 4  # current + 3 prior: covers the rolling3y party window
+HISTORY_YEARS = 7  # rolling3y window answerable through a 3-year replay
+                   # (window start 2023 - 3 yrs of history = 2020)
 _HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; macrosignal research)"}
 _COL_REPORT_DATE, _COL_CODE = 2, 3
 

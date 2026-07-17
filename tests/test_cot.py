@@ -120,7 +120,8 @@ def test_fetches_annuals_per_report_plus_weeklies(conn):
     tff_zips = [u for u in session.calls if "fin_txt" in u]
     assert len(disagg_zips) == cot.HISTORY_YEARS
     assert len(tff_zips) == cot.HISTORY_YEARS
-    assert disagg_zips[0].endswith("2023.zip")
+    first_year = TODAY.year - cot.HISTORY_YEARS + 1
+    assert disagg_zips[0].endswith(f"{first_year}.zip")
     assert disagg_zips[-1].endswith("2026.zip")
     assert cot.REPORTS["disagg"][0] in session.calls
     assert cot.REPORTS["tff"][0] in session.calls

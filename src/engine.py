@@ -92,7 +92,9 @@ def _assign(prev: MarketState, flags: MarketState, obs: dict) -> str:
     greedy_loud = news == "loud_greedy"
     driver_dead = flags.dead_weeks >= DEAD_WEEKS_THRESHOLD
 
-    if prior in ("EARLY", "CONFIRMED") and (engine is False or driver_dead):
+    # BROKEN = "driver flips against the POSITION" (§5b). EARLY is watchlist
+    # only — no position — so a dying engine just decays it to NEUTRAL.
+    if prior == "CONFIRMED" and (engine is False or driver_dead):
         return "BROKEN"
     if flags.party_full and greedy_loud:
         return "CROWDED"

@@ -57,6 +57,13 @@ def test_confirmed_to_broken_on_engine_flip():
     assert s.state == "BROKEN"
 
 
+def test_early_decays_to_neutral_not_broken():
+    # EARLY holds no position (watchlist only) -> no BROKEN theatrics
+    early = MarketState(state="EARLY", party_empty=True)
+    s = step(early, obs(engine=False, alive=True, party=15, momentum=0))
+    assert s.state == "NEUTRAL"
+
+
 def test_broken_lasts_one_week_then_neutral():
     broken = MarketState(state="BROKEN")
     s = step(broken, obs(engine=None, alive=None, party=50, momentum=0))
