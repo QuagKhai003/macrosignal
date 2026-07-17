@@ -65,6 +65,15 @@ def run_week(conn: sqlite3.Connection, as_of: dt.date) -> dict:
     return results
 
 
+def previous_states(conn: sqlite3.Connection, current_week: str) -> dict:
+    """{market: state string} from the latest week before current_week."""
+    out = {}
+    for market in drivers.MARKETS:
+        prior = _prior_state(conn, market, current_week)
+        out[market] = prior.state if prior else "NEUTRAL"
+    return out
+
+
 def _prior_state(conn, market: str, current_week: str):
     row = conn.execute(
         "SELECT state, age_weeks, scores_json FROM states"

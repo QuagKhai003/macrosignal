@@ -17,7 +17,7 @@
 
 import datetime as dt
 
-from src import db, registry, spine, states
+from src import db, registry, report, spine, states
 from src.fetchers import cot, eia, fred, prices
 
 FETCHERS = {"FRED": fred.fetch, "CFTC": cot.fetch, "Yahoo": prices.fetch,
@@ -25,7 +25,8 @@ FETCHERS = {"FRED": fred.fetch, "CFTC": cot.fetch, "Yahoo": prices.fetch,
 
 
 def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
-         today: dt.date | None = None, sessions: dict | None = None) -> int:
+         today: dt.date | None = None, sessions: dict | None = None,
+         full: bool = False) -> int:
     today = today or dt.date.today()
     as_of = today.isoformat()
     entries = registry.load_registry(registry_path, as_of=today)
@@ -57,6 +58,8 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
 
         added += spine.derive_net_liquidity(conn, as_of)
         summary = spine.summarize(conn, as_of)
+        week = states.iso_week(today)
+        prev_states = states.previous_states(conn, week)
         market_states = states.run_week(conn, today)
         conn.execute(
             "INSERT INTO journal (date, market_id, event_type, detail,"
@@ -67,16 +70,14 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
     finally:
         conn.close()
 
-    for market, r in market_states.items():
-        print(f"{market}: {r['state']} (age {r['age_weeks']}w,"
-              f" size {r['size_fraction']:.4f})")
-    for key, value in summary.items():
-        shown = "insufficient" if value is None else (
-            round(value, 1) if isinstance(value, float) else value)
-        print(f"{key}: {shown}")
+    print(report.build(market_states, prev_states, week,
+                       weather=states.WEATHER_STUB, summary=summary,
+                       full=full))
     print("run complete")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    import sys
+    sys.stdout.reconfigure(encoding="utf-8")  # report uses em-dashes
+    raise SystemExit(main(full="--full" in sys.argv))

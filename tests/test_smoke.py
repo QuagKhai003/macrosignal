@@ -65,7 +65,7 @@ def test_partial_run_derives_net_liquidity(tmp_path, capsys):
     sessions = {"FRED": FredOkSession(), "CFTC": DownSession(),
                 "Yahoo": DownSession(), "EIA": DownSession()}
     assert weekly_run.main(db_path=db_path, today=AS_OF,
-                           sessions=sessions) == 0
+                           sessions=sessions, full=True) == 0
     out = capsys.readouterr().out
     assert "net_liquidity_pct: insufficient" in out  # 2 obs << 0.8*520
 
