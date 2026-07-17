@@ -6,6 +6,7 @@ docs/
 *.notes.md
 scratch/
 .notes/
+product_info/
 
 # ── secrets ──
 .env
