@@ -1,0 +1,72 @@
+# Signal registry — THE admission-test config (product doc §11, build plan Phase 0).
+# A signal enters the machine only if ALL five admission questions pass:
+#   1. a number, not a vibe          → it is a numeric series stored in observations
+#   2. free + fixed schedule         → source_url + schedule fields
+#   3. 10+ years of history          → history_start (validated vs the run date)
+#   4. one-sentence causal story     → causal_sentence
+#   5. named elite watchers          → elite_watcher
+# Groups (product doc §11): A positioning, B smart-money paperwork, C regulatory,
+# D physical world, E company behavior, F market vital signs, G retail, H elite liquidity.
+# pub_lag_days encodes the publication lag (as-of discipline; used by the Phase 5 replay).
+# Validated by src/registry.py; mirrored into the signals.db `series` table each run.
+
+signals:
+  - series_id: net_liquidity
+    name: Net liquidity (Fed balance sheet - Treasury account - reverse repo)
+    group: H
+    source: FRED
+    source_url: https://fred.stlouisfed.org/graph/fredgraph.csv?id=WALCL  # derived with WTREGEN and RRPONTSYD
+    schedule: weekly
+    pub_lag_days: 1
+    history_start: 2015-01-01
+    window: rolling10y
+    causal_sentence: Central banks control the water level of the market pool, so rising net liquidity lifts asset prices before the crowd notices the tide.
+    elite_watcher: Michael Howell (CrossBorder Capital), Stanley Druckenmiller, Michael Hartnett (BofA)
+
+  - series_id: cot_managed_money
+    name: CFTC COT Managed Money net positioning (gold, WTI, 10-yr T-note, EUR, corn)
+    group: A
+    source: CFTC
+    source_url: https://www.cftc.gov/dea/newcot/f_disagg.txt
+    schedule: weekly
+    pub_lag_days: 3  # Tuesday data, Friday release
+    history_start: 2006-06-13
+    window: rolling3y
+    causal_sentence: Trend-chasing speculators are right mid-trend and wrong at turns, so their positioning extremes mark old crowded trends and their abandonment marks early zones.
+    elite_watcher: Managed-futures desks (Man AHL, AQR), veteran COT analysts (Larry Williams)
+
+  - series_id: spine_prices
+    name: Daily closes for the 5 spine markets (GC, CL, ZN, EURUSD, ZC) feeding the 200-day momentum gate
+    group: F
+    source: stooq
+    source_url: https://stooq.com/q/d/l/?s=gc.f
+    schedule: daily
+    pub_lag_days: 0
+    history_start: 2000-01-01
+    window: sma200
+    causal_sentence: Investors underreact to news and then herd, so a price above its own 200-day average tends to keep drifting the same way.
+    elite_watcher: Trend-following funds (AQR, Man AHL, Winton) running the century-validated strategy
+
+  - series_id: real_yields
+    name: 10-year TIPS real yield, FRED DFII10 (gold's engine + driver-alive correlation)
+    group: H
+    source: FRED
+    source_url: https://fred.stlouisfed.org/graph/fredgraph.csv?id=DFII10
+    schedule: daily
+    pub_lag_days: 1
+    history_start: 2003-01-02
+    window: rolling10y
+    causal_sentence: Gold pays no interest, so when the real yield on safe bonds falls the penalty for holding gold disappears and its price rises.
+    elite_watcher: Macro funds' gold desks (Bridgewater), World Gold Council research
+
+  - series_id: credit_spread
+    name: US high-yield option-adjusted spread, FRED BAMLH0A0HYM2 (weather gauge 3)
+    group: F
+    source: FRED
+    source_url: https://fred.stlouisfed.org/graph/fredgraph.csv?id=BAMLH0A0HYM2
+    schedule: daily
+    pub_lag_days: 1
+    history_start: 1996-12-31
+    window: rolling10y
+    causal_sentence: Credit investors demand extra yield the moment repayment looks shakier, so spreads widen before equity markets admit trouble.
+    elite_watcher: Howard Marks (Oaktree), the Federal Reserve's financial-stability monitors
