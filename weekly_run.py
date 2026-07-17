@@ -17,7 +17,7 @@
 
 import datetime as dt
 
-from src import db, registry, spine
+from src import db, registry, spine, states
 from src.fetchers import cot, eia, fred, prices
 
 FETCHERS = {"FRED": fred.fetch, "CFTC": cot.fetch, "Yahoo": prices.fetch,
@@ -57,6 +57,7 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
 
         added += spine.derive_net_liquidity(conn, as_of)
         summary = spine.summarize(conn, as_of)
+        market_states = states.run_week(conn, today)
         conn.execute(
             "INSERT INTO journal (date, market_id, event_type, detail,"
             " price_at_event) VALUES (?, NULL, 'run', ?, NULL)",
@@ -66,6 +67,9 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
     finally:
         conn.close()
 
+    for market, r in market_states.items():
+        print(f"{market}: {r['state']} (age {r['age_weeks']}w,"
+              f" size {r['size_fraction']:.4f})")
     for key, value in summary.items():
         shown = "insufficient" if value is None else (
             round(value, 1) if isinstance(value, float) else value)

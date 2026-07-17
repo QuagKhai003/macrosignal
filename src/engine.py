@@ -25,6 +25,21 @@ from dataclasses import dataclass, replace
 STATES = ("NEUTRAL", "EARLY", "CONFIRMED", "CROWDED", "BROKEN")
 DEAD_WEEKS_THRESHOLD = 26  # F3: driver dead after 26 consecutive not-alive weeks
 
+N_SLOTS = 5  # F12: 1/N of risk budget per unrelated position
+WEATHER_MULT = {"GREEN": 1.0, "YELLOW": 0.5, "RED": 0.0}
+
+
+def size_fraction(state: str, age_weeks: int, weather: str = "YELLOW",
+                  whale_entry: bool = False) -> float:
+    """F12: size = (1/N) x w x g x e. Zero unless entry is allowed at all:
+    CONFIRMED, or EARLY with an active whale override (§13.4)."""
+    eligible = state == "CONFIRMED" or (state == "EARLY" and whale_entry)
+    if not eligible:
+        return 0.0
+    g = 1.0 if age_weeks < 26 else (0.75 if age_weeks <= 52 else 0.5)
+    e = 0.5 if (state == "EARLY" and whale_entry) else 1.0
+    return (1.0 / N_SLOTS) * WEATHER_MULT[weather] * g * e
+
 
 @dataclass(frozen=True)
 class MarketState:
