@@ -135,16 +135,32 @@ def gold_engine(conn: sqlite3.Connection, as_of: str) -> dict:
     return falling_driver_engine(conn, "fred_dfii10", "price_gold", as_of)
 
 
+def oil_curve_backwardated(conn: sqlite3.Connection, as_of: str) -> bool | None:
+    """F9's second oil condition (research R3): the futures curve is
+    backwardated when the latest front-minus-4th-month spread is positive —
+    the market pays MORE for oil now than later, a shortage signal the
+    inventory count can miss. Plain > 0 per the spec's own wording (no
+    invented band — anti-astrology rule); None = no curve data at as_of."""
+    rows = spine._series_rows(conn, "oil_curve_spread", as_of)
+    if not rows:
+        return None
+    return rows[-1][2] > 0
+
+
 def oil_engine(conn: sqlite3.Connection, as_of: str,
                prev_engine: bool | None = None,
                exit_band: float = 0.02) -> dict:
     """Engine ✓ = commercial crude stocks below their same-calendar-week
-    average of the prior 5 years (tightness). Needs >= 4 of 5 prior years
-    within +/-10 days of the anniversary date. §5b two-trigger hysteresis
-    (rule decision 2026-07-18): turns ✓ below the average, turns ✗ only above
-    (1 + exit_band) x the average; in between the previous answer carries
-    (fresh market in the band -> ✗). Inventory drivers have no correlation-
-    alive concept in v1 -> alive mirrors data presence."""
+    average of the prior 5 years (tightness) OR the futures curve is
+    backwardated (F9 verbatim, research R3). Inventory leg needs >= 4 of 5
+    prior years within +/-10 days of the anniversary date and keeps its §5b
+    two-trigger hysteresis (rule decision 2026-07-18): turns ✓ below the
+    average, turns ✗ only above (1 + exit_band) x the average; in between the
+    previous answer carries (fresh market in the band -> ✗). Inventory
+    drivers have no correlation-alive concept in v1 -> alive mirrors data
+    presence."""
+    if oil_curve_backwardated(conn, as_of):
+        return {"engine": True, "alive": True}
     rows = spine._series_rows(conn, "oil_inventories", as_of)
     if not rows:
         return {"engine": None, "alive": None}

@@ -73,6 +73,7 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
         added += spine.derive_market_valuation(conn, as_of)
         added += spine.derive_rate_differential(conn, as_of)
         added += spine.derive_corn_stocks_use(conn, as_of)
+        added += spine.derive_oil_curve_spread(conn, as_of)
         summary = spine.summarize(conn, as_of)
         week = states.iso_week(today)
         light = weather.light(conn, as_of)

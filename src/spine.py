@@ -149,6 +149,34 @@ def derive_corn_stocks_use(conn: sqlite3.Connection, as_of: str) -> int:
     return added
 
 
+def derive_oil_curve_spread(conn: sqlite3.Connection, as_of: str) -> int:
+    """Oil's F9 curve leg (research R3): front-month minus 4th-month WTI
+    futures (EIA RCLC1 − RCLC4), same trading day only. Positive spread =
+    backwardation (today's oil dearer than later oil = shortage signal).
+    Stored as the derived oil_curve_spread series ($/bbl, daily)."""
+    front = _series_rows(conn, "eia_rclc1", as_of)
+    fourth = _series_rows(conn, "eia_rclc4", as_of)
+    if not front or not fourth:
+        return 0
+    conn.execute(  # derived series: own its parent row (FK) — no registry entry
+        "INSERT OR IGNORE INTO series VALUES ('oil_curve_spread', 'derived',"
+        " '', 'daily', 'fixed_threshold',"
+        " 'WTI front-month minus 4th-month futures; positive = backwardation')")
+    fourth_by_date = {d: (pub, v) for d, pub, v in fourth}
+    added = 0
+    for data_date, pub, value in front:
+        match = fourth_by_date.get(data_date)
+        if match is None:
+            continue
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO observations VALUES"
+            " ('oil_curve_spread', ?, ?, ?)",
+            (data_date, max(pub, match[0]), value - match[1]))
+        added += cur.rowcount
+    conn.commit()
+    return added
+
+
 def summarize(conn: sqlite3.Connection, as_of: str) -> dict:
     """The Phase 1 readouts, one dict — every value traceable to a formula."""
     out = {}

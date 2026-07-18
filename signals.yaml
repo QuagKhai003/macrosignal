@@ -198,6 +198,23 @@ signals:
       source_desc: SURVEY
       reference_period_desc: YEAR
 
+  - series_id: oil_curve
+    name: WTI futures curve, front vs 4th month, EIA daily (oil's F9 curve leg, research R3)
+    group: F
+    source: EIA
+    source_url: https://api.eia.gov/v2/seriesid/PET.RCLC1.D
+    schedule: daily
+    pub_lag_days: 1
+    history_start: 1985-01-02
+    window: fixed_threshold  # backwardated = front minus 4th month > 0 (F9 verbatim)
+    series_codes: [PET.RCLC1.D, PET.RCLC4.D]  # stored as eia_rclc1 / eia_rclc4; spread derived in src/spine
+    causal_sentence: When buyers pay more for oil delivered now than for oil delivered later, supply is short today, and that shortage lifts prices before inventory reports confirm it.
+    elite_watcher: Every physical oil trading desk (curve shape IS their P&L), Pierre Andurand
+    # HONEST LIMIT: EIA stopped updating these series 2024-04 (exchange-data
+    # licensing). History (1985->2024) feeds the replay verdict; a live
+    # continuation (Yahoo CME contract months) is built ONLY if the leg
+    # survives the keep-or-kill — see RESEARCH.md R3.
+
   - series_id: cb_gold
     name: World central-bank gold holdings flow, IMF IRFCL monthly (gold's dominant-flow leg, research R2)
     group: H

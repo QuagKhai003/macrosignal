@@ -1,11 +1,15 @@
 """EIA fetcher — weekly petroleum series via the v2 seriesid API.
 
-@context  Oil's engine input (tech spec Part 1 row 8): WCESTUS1, US commercial
-          crude stocks, weekly. The v2 `seriesid` route keeps the old-style
-          series codes (config in signals.yaml `series_codes`).
-@done     fetch(): stores under the entry's own series_id (single-series
-          entries); data_date = week-ending period, pub_date = +pub_lag_days
-          (the following Wednesday's report); idempotent; loud failures.
+@context  Oil's engine inputs (tech spec Part 1 row 8 + F9): WCESTUS1 weekly
+          crude stocks, and the R3 futures-curve contracts RCLC1/RCLC4 (daily,
+          EIA stopped updating them 2024-04 — history feeds the replay; a live
+          continuation is only worth building if the curve leg survives).
+          The v2 `seriesid` route keeps the old-style series codes.
+@done     fetch(): a single-code entry stores under the entry's own series_id
+          (oil_inventories, unchanged); a multi-code entry stores per code
+          under eia_<code-tail> (the FRED pattern — eia_rclc1, eia_rclc4);
+          data_date = period, pub_date = +pub_lag_days; idempotent; loud
+          failures.
 @todo     More EIA series (natural gas) only via new signals.yaml entries.
 @limits   Requires EIA_API_KEY unless a session is injected (tests). Raises
           FetchError — the orchestrator journals it.
@@ -36,11 +40,13 @@ def fetch(entry: dict, conn: sqlite3.Connection, session=None) -> int:
 
     lag = dt.timedelta(days=int(entry["pub_lag_days"]))
     added = 0
-    for code in entry["series_codes"]:
+    codes = entry["series_codes"]
+    for code in codes:
         rows = _rows(session, code, lag)
-        base.ensure_series_row(conn, entry["series_id"], entry,
-                               f"EIA {code}")
-        added += base.insert_observations(conn, entry["series_id"], rows)
+        sid = entry["series_id"] if len(codes) == 1 \
+            else f"eia_{code.split('.')[1].lower()}"
+        base.ensure_series_row(conn, sid, entry, f"EIA {code}")
+        added += base.insert_observations(conn, sid, rows)
     conn.commit()
     return added
 
