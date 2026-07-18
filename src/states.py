@@ -25,7 +25,6 @@ import sqlite3
 from src import drivers, engine, formulas, spine
 
 PARTY_WINDOW = spine.WINDOW_OBS[("rolling3y", "weekly")]
-WEATHER_STUB = "YELLOW"  # Phase 3 replaces with the real 4-gauge light
 
 
 def iso_week(day: dt.date) -> str:
@@ -33,8 +32,10 @@ def iso_week(day: dt.date) -> str:
     return f"{iso.year}-W{iso.week:02d}"
 
 
-def run_week(conn: sqlite3.Connection, as_of: dt.date) -> dict:
-    """Compute + persist this week's states. Returns {market: state_dict}."""
+def run_week(conn: sqlite3.Connection, as_of: dt.date,
+             weather_light: str = "YELLOW") -> dict:
+    """Compute + persist this week's states. Returns {market: state_dict}.
+    weather_light scales F12 sizes (caller computes it via src/weather)."""
     week = iso_week(as_of)
     as_of_str = as_of.isoformat()
     prior_scores = {m: _prior_scores(conn, m, week) for m in drivers.MARKETS}
@@ -59,10 +60,11 @@ def run_week(conn: sqlite3.Connection, as_of: dt.date) -> dict:
         }
         prev = _prior_state(conn, market, week)
         new = engine.step(prev, obs)
-        size = engine.size_fraction(new.state, new.age_weeks, WEATHER_STUB)
+        size = engine.size_fraction(new.state, new.age_weeks, weather_light)
         scores = {**{k: obs[k] for k in
                      ("engine", "alive", "party_pct", "momentum", "news")},
                   "momentum_raw": momentum_raw,
+                  "weather": weather_light,
                   "size_fraction": size,
                   "flags": {"party_full": new.party_full,
                             "party_empty": new.party_empty,

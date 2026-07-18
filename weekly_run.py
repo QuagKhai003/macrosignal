@@ -17,7 +17,7 @@
 
 import datetime as dt
 
-from src import db, registry, report, spine, states
+from src import db, registry, report, spine, states, weather
 from src.fetchers import cot, eia, fred, prices
 
 FETCHERS = {"FRED": fred.fetch, "CFTC": cot.fetch, "Yahoo": prices.fetch,
@@ -60,8 +60,13 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
         added += spine.derive_market_valuation(conn, as_of)
         summary = spine.summarize(conn, as_of)
         week = states.iso_week(today)
+        light = weather.light(conn, as_of)
         prev_states = states.previous_states(conn, week)
-        market_states = states.run_week(conn, today)
+        market_states = states.run_week(conn, today,
+                                        weather_light=light["light"])
+        summary["weather_points"] = light["points"]
+        for name, g in light["gauges"].items():
+            summary[f"weather_{name}"] = g["value"]
         conn.execute(
             "INSERT INTO journal (date, market_id, event_type, detail,"
             " price_at_event) VALUES (?, NULL, 'run', ?, NULL)",
@@ -72,7 +77,7 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
         conn.close()
 
     print(report.build(market_states, prev_states, week,
-                       weather=states.WEATHER_STUB, summary=summary,
+                       weather=light["light"], summary=summary,
                        full=full))
     print("run complete")
     return 0
