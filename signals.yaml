@@ -210,10 +210,13 @@ signals:
     series_codes: [PET.RCLC1.D, PET.RCLC4.D]  # stored as eia_rclc1 / eia_rclc4; spread derived in src/spine
     causal_sentence: When buyers pay more for oil delivered now than for oil delivered later, supply is short today, and that shortage lifts prices before inventory reports confirm it.
     elite_watcher: Every physical oil trading desk (curve shape IS their P&L), Pierre Andurand
-    # HONEST LIMIT: EIA stopped updating these series 2024-04 (exchange-data
-    # licensing). History (1985->2024) feeds the replay verdict; a live
-    # continuation (Yahoo CME contract months) is built ONLY if the leg
-    # survives the keep-or-kill — see RESEARCH.md R3.
+    # EIA stopped updating these series 2024-04 (exchange-data licensing);
+    # history feeds the replay. R3b live continuation (leg KEPT 2026-07-18):
+    # Yahoo CME contract months -> yh_clc1/yh_clc4, one close per run, merged
+    # after the EIA span in src/spine. The 2024-04->2026-07 gap stays empty
+    # (expired Yahoo contracts are gone) — honest None in that window.
+    live_curve:
+      symbol_root: CL  # CL + delivery-month letter + 2-digit year + .NYM
 
   - series_id: cb_gold
     name: World central-bank gold holdings flow, IMF IRFCL monthly (gold's dominant-flow leg, research R2)

@@ -163,6 +163,106 @@ def test_oil_engine_curve_respects_as_of(conn):
     assert drivers.oil_curve_backwardated(conn, "2024-04-04") is None
 
 
+# ── R3b: live curve continuation (Yahoo contract months) ─────────────────────
+
+import datetime as dt
+
+from src.fetchers import oilcurve
+
+
+def yahoo_payload(closes_by_ts):
+    return {"chart": {"result": [{
+        "meta": {"gmtoffset": 0},
+        "timestamp": list(closes_by_ts),
+        "indicators": {"quote": [{"close": list(closes_by_ts.values())}]}}]}}
+
+
+class FakeYahooSession:
+    """Serves a payload per symbol; records what was requested."""
+
+    def __init__(self, by_symbol):
+        self._by_symbol, self.requested = by_symbol, []
+
+    def get(self, url, params, headers, timeout):
+        symbol = url.rsplit("/", 1)[1]
+        self.requested.append(symbol)
+        payload = self._by_symbol.get(symbol)
+        return FakeResponse(payload, 200 if payload else 404)
+
+
+def test_contract_symbol_arithmetic():
+    # before the 15th: next delivery month; on/after: rolled one further
+    assert oilcurve.contract_symbol("CL", dt.date(2026, 7, 10), 0) == "CLQ26.NYM"
+    assert oilcurve.contract_symbol("CL", dt.date(2026, 7, 18), 0) == "CLU26.NYM"
+    assert oilcurve.contract_symbol("CL", dt.date(2026, 7, 18), 3) == "CLZ26.NYM"
+    # December rollover crosses the year for both ranks
+    assert oilcurve.contract_symbol("CL", dt.date(2026, 12, 20), 0) == "CLG27.NYM"
+    assert oilcurve.contract_symbol("CL", dt.date(2026, 12, 20), 3) == "CLK27.NYM"
+
+
+LIVE_ENTRY = dict(CURVE_ENTRY, live_curve={"symbol_root": "CL"})
+# 2026-07-17 04:00 UTC epoch; today=2026-07-18 -> front CLU26, 4th CLZ26
+_TS = 1784260800
+YAHOO_OK = {"CLU26.NYM": yahoo_payload({_TS: 81.78}),
+            "CLZ26.NYM": yahoo_payload({_TS: 77.65})}
+
+
+def test_continuation_stores_latest_close(conn):
+    added = oilcurve.fetch_continuation(
+        LIVE_ENTRY, conn, session=FakeYahooSession(YAHOO_OK),
+        today=dt.date(2026, 7, 18))
+    assert added == 2
+    rows = conn.execute("SELECT series_id, data_date, value FROM observations"
+                        " ORDER BY series_id").fetchall()
+    assert rows == [("yh_clc1", "2026-07-17", 81.78),
+                    ("yh_clc4", "2026-07-17", 77.65)]
+
+
+def test_eia_fetch_runs_continuation_after_history(conn):
+    added = eia.fetch(LIVE_ENTRY, conn, session=FakeSession(),
+                      live_session=FakeYahooSession(YAHOO_OK),
+                      today=dt.date(2026, 7, 18))
+    assert added == 6  # 4 history rows + 2 live closes
+
+
+def test_continuation_missing_contract_raises(conn):
+    with pytest.raises(oilcurve.FetchError, match="HTTP 404"):
+        oilcurve.fetch_continuation(
+            LIVE_ENTRY, conn, session=FakeYahooSession({}),
+            today=dt.date(2026, 7, 18))
+
+
+def test_spread_merges_live_after_eia_span(conn):
+    from src import drivers, spine
+    # EIA era ends in contango; the live continuation is backwardated
+    put_curve(conn, {"2024-04-05": (80.0, 84.0)})
+    oilcurve.fetch_continuation(
+        LIVE_ENTRY, conn, session=FakeYahooSession(YAHOO_OK),
+        today=dt.date(2026, 7, 18))
+    assert spine.derive_oil_curve_spread(conn, "2026-07-18") == 2
+    rows = conn.execute("SELECT data_date, value FROM observations WHERE"
+                        " series_id = 'oil_curve_spread'"
+                        " ORDER BY data_date").fetchall()
+    assert rows == [("2024-04-05", pytest.approx(-4.0)),
+                    ("2026-07-17", pytest.approx(81.78 - 77.65))]
+    assert drivers.oil_engine(conn, "2026-07-18")["engine"] is True
+
+
+def test_live_rows_never_shadow_eia_span(conn):
+    from src import spine
+    put_curve(conn, {"2024-04-05": (80.0, 84.0)})
+    # a stray live row INSIDE the EIA span must be ignored, not merged
+    for sid, v in (("yh_clc1", 99.0), ("yh_clc4", 1.0)):
+        conn.execute("INSERT OR IGNORE INTO series VALUES (?,'Yahoo','u',"
+                     "'daily','fixed_threshold','')", (sid,))
+        conn.execute("INSERT INTO observations VALUES (?,?,?,?)",
+                     (sid, "2024-04-04", "2024-04-04", v))
+    spine.derive_oil_curve_spread(conn, "2026-07-18")
+    rows = conn.execute("SELECT data_date, value FROM observations WHERE"
+                        " series_id = 'oil_curve_spread'").fetchall()
+    assert rows == [("2024-04-05", pytest.approx(-4.0))]
+
+
 @pytest.mark.integration
 def test_live_wcestus1(conn):
     entry = next(e for e in registry.load_registry()

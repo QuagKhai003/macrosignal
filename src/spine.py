@@ -151,11 +151,13 @@ def derive_corn_stocks_use(conn: sqlite3.Connection, as_of: str) -> int:
 
 def derive_oil_curve_spread(conn: sqlite3.Connection, as_of: str) -> int:
     """Oil's F9 curve leg (research R3): front-month minus 4th-month WTI
-    futures (EIA RCLC1 − RCLC4), same trading day only. Positive spread =
-    backwardation (today's oil dearer than later oil = shortage signal).
-    Stored as the derived oil_curve_spread series ($/bbl, daily)."""
-    front = _series_rows(conn, "eia_rclc1", as_of)
-    fourth = _series_rows(conn, "eia_rclc4", as_of)
+    futures, same trading day only. Positive spread = backwardation (today's
+    oil dearer than later oil = shortage signal). Sources merged per leg
+    (R3b): EIA settlements (RCLC1/RCLC4, authoritative, frozen 2024-04) plus
+    the Yahoo live continuation (yh_clc1/yh_clc4) strictly AFTER the EIA
+    span. Stored as the derived oil_curve_spread series ($/bbl, daily)."""
+    front = _with_continuation(conn, "eia_rclc1", "yh_clc1", as_of)
+    fourth = _with_continuation(conn, "eia_rclc4", "yh_clc4", as_of)
     if not front or not fourth:
         return 0
     conn.execute(  # derived series: own its parent row (FK) — no registry entry
@@ -205,6 +207,15 @@ def summarize(conn: sqlite3.Connection, as_of: str) -> dict:
     out["gold_realyield_corr_52w"] = _weekly_corr(
         conn, "fred_dfii10", "price_gold", as_of)
     return out
+
+
+def _with_continuation(conn, primary_sid, live_sid, as_of):
+    """Primary rows plus live-continuation rows strictly after the primary's
+    last data date — the frozen source stays authoritative for its span."""
+    primary = _series_rows(conn, primary_sid, as_of)
+    live = _series_rows(conn, live_sid, as_of)
+    cutoff = primary[-1][0] if primary else ""
+    return primary + [r for r in live if r[0] > cutoff]
 
 
 def _series_rows(conn, sid, as_of):

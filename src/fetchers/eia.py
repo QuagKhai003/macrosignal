@@ -9,7 +9,9 @@
           (oil_inventories, unchanged); a multi-code entry stores per code
           under eia_<code-tail> (the FRED pattern — eia_rclc1, eia_rclc4);
           data_date = period, pub_date = +pub_lag_days; idempotent; loud
-          failures.
+          failures. Entries carrying `live_curve` delegate to src/fetchers/
+          oilcurve.fetch_continuation AFTER committing history (R3b — live
+          Yahoo contract months continue the frozen EIA curve).
 @todo     More EIA series (natural gas) only via new signals.yaml entries.
 @limits   Requires EIA_API_KEY unless a session is injected (tests). Raises
           FetchError — the orchestrator journals it.
@@ -22,7 +24,7 @@ import sqlite3
 import requests
 
 from src import config
-from src.fetchers import base
+from src.fetchers import base, oilcurve
 
 API_URL = "https://api.eia.gov/v2/seriesid/{code}"
 
@@ -31,7 +33,8 @@ class FetchError(RuntimeError):
     pass
 
 
-def fetch(entry: dict, conn: sqlite3.Connection, session=None) -> int:
+def fetch(entry: dict, conn: sqlite3.Connection, session=None,
+          live_session=None, today=None) -> int:
     if session is None:
         key = config.get_key("EIA_API_KEY")
         if not key:
@@ -47,7 +50,10 @@ def fetch(entry: dict, conn: sqlite3.Connection, session=None) -> int:
             else f"eia_{code.split('.')[1].lower()}"
         base.ensure_series_row(conn, sid, entry, f"EIA {code}")
         added += base.insert_observations(conn, sid, rows)
-    conn.commit()
+    conn.commit()  # history is safe even if the live continuation fails loud
+    if entry.get("live_curve"):
+        added += oilcurve.fetch_continuation(entry, conn,
+                                             session=live_session, today=today)
     return added
 
 
