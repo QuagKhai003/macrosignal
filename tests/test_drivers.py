@@ -167,3 +167,42 @@ def test_silver_shares_gold_driver(conn):
     put_weekly(conn, "price_silver", silver)
     assert drivers.engines(conn, AS_OF)["silver"] == {"engine": True,
                                                       "alive": True}
+
+
+# ── R5: the dollar OR-leg for gold and silver ────────────────────────────────
+
+def test_dollar_leg_alone_turns_gold_on(conn):
+    # no real-yields data at all; the dollar falls with anti-corr gold price
+    conn.execute("INSERT INTO series VALUES ('fred_dtwexbgs', 's', 'u',"
+                 " 'daily', 'rolling10y', '')")
+    n = 560
+    dollar_falling = wiggle(130.0, n, big=-1.0, small=0.5)
+    gold = [8000.0 - 10 * d for d in dollar_falling]
+    put_weekly(conn, "fred_dtwexbgs", dollar_falling)
+    put_weekly(conn, "price_gold", gold)
+    result = drivers.engines(conn, AS_OF)["gold"]
+    assert result == {"engine": True, "alive": True}
+
+
+def test_dollar_rising_leaves_yields_leg(conn):
+    conn.execute("INSERT INTO series VALUES ('fred_dtwexbgs', 's', 'u',"
+                 " 'daily', 'rolling10y', '')")
+    n = 560
+    dollar_rising = wiggle(90.0, n, big=1.0, small=-0.5)
+    gold = [8000.0 - 10 * d for d in dollar_rising]
+    yields_rising = wiggle(0.0, n, big=1.0, small=-0.5)
+    put_weekly(conn, "fred_dtwexbgs", dollar_rising)
+    put_weekly(conn, "fred_dfii10", yields_rising)
+    put_weekly(conn, "price_gold", gold)
+    # both legs answer no -> engine False (not None)
+    assert drivers.engines(conn, AS_OF)["gold"]["engine"] is False
+
+
+def test_or_legs_three_way():
+    t = {"engine": True, "alive": True}
+    f = {"engine": False, "alive": False}
+    n = {"engine": None, "alive": None}
+    assert drivers._or_legs(f, t)["engine"] is True
+    assert drivers._or_legs(n, t)["engine"] is True
+    assert drivers._or_legs(f, n)["engine"] is None
+    assert drivers._or_legs(f, f)["engine"] is False
