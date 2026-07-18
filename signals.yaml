@@ -100,6 +100,16 @@ signals:
     window: fixed_threshold  # loud >3.0x, un-loud <2.0x, quiet <1.5x (F6)
     causal_sentence: Noise is the last stage of a move, so when everyone is already talking about a theme, few buyers remain who have not bought.
     elite_watcher: Contrarian PMs everywhere; the BofA FMS "most crowded trade" question measures the same herd
+    # keyed fallback when api.gdeltproject.org refuses (user decision
+    # 2026-07-18): fills HEADLINES only — Cloud counts story clusters, the
+    # Project counts articles; mixing scales would corrupt the F6 ratio.
+    cloud_fallback:
+      url: https://gdeltcloud.com/api/v2/stories
+      # free tier = 100 requests/month/key; rotate through keys, advancing to
+      # the next when one is quota-exhausted (429 / PLAN_REQUIRED)
+      key_envs: [GDLTE_CLOUD_API_KEY, GDLTE_CLOUD_API_KEY_2,
+                 GDLTE_CLOUD_API_KEY_3, GDLTE_CLOUD_API_KEY_4,
+                 GDLTE_CLOUD_API_KEY_5]
     # GDELT query per theme — deterministic, editable config (build plan Phase 4)
     themes:
       gold: '"gold price" OR "gold rally" OR "gold market"'

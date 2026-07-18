@@ -11,11 +11,22 @@
 """
 
 import datetime as dt
+import pathlib
+
+import pytest
 
 import weekly_run
-from src import db
+from src import config, db
 
 AS_OF = dt.date(2026, 7, 18)
+
+
+@pytest.fixture(autouse=True)
+def no_real_keys(monkeypatch, tmp_path):
+    """The offline suite must NEVER reach the network: hide the real .env so
+    key-gated fallbacks (gdeltcloud) fail fast instead of going live."""
+    monkeypatch.setattr(config, "ENV_PATH", tmp_path / "absent.env")
+    monkeypatch.delenv("GDLTE_CLOUD_API_KEY", raising=False)
 
 
 class DownSession:
@@ -81,7 +92,8 @@ def test_partial_run_derives_net_liquidity(tmp_path, capsys):
     assert abs(rows[1][1] - 5986.71) < 0.001
     run_detail = conn.execute("SELECT detail FROM journal"
                               " WHERE event_type = 'run'").fetchone()[0]
-    assert "5 fetch failures" in run_detail  # all but FRED down
+    assert "5 fetch failures" in run_detail  # all but FRED down (cloud
+    # fallback keyless here, so the GDELT leg counts as failed)
     conn.close()
 
 

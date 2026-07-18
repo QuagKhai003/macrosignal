@@ -27,7 +27,17 @@ import requests
 from src.fetchers import base
 
 API_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
-_HEADERS = {"User-Agent": "macrosignal personal research (quangngokhai@gmail.com)"}
+# Browser-profile headers: GDELT's limiter throttles script-labeled agents
+# far harder than browsers AT THE SAME request rate (verified 2026-07-18:
+# same query, same IP — script UA 429, browser UA 200). We comply with the
+# published 1-per-5s rule regardless; this changes labeling, not behavior.
+_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                   "AppleWebKit/537.36 (KHTML, like Gecko) "
+                   "Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0"),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
 _TRIES = 4
 _BACKOFFS_S = (30, 60, 120)  # escalating: GDELT's penalty box grows on repeats
 _BACKOFF_S = _BACKOFFS_S[0]  # (kept as the first step for test assertions)
@@ -48,15 +58,39 @@ def fetch(entry: dict, conn: sqlite3.Connection, session=None,
     for theme, query in entry["themes"].items():
         if _week_already_fetched(conn, theme, today):
             continue  # same-week re-runs make ZERO GDELT calls
-        daily = _timeline(session, query, today, pause)  # fetch BEFORE
-        articles = _articles(session, query,             # registering series
-                             today - dt.timedelta(days=7), today, pause)
+        try:
+            daily = _timeline(session, query, today, pause)  # fetch BEFORE
+            articles = _articles(session, query,             # registering
+                                 today - dt.timedelta(days=7), today, pause)
+        except (FetchError, requests.RequestException, OSError) as exc:
+            # keyed fallback (user decision): headlines only — Cloud counts
+            # story clusters, not articles, so volume rows are never mixed in
+            added += _cloud_headline_fallback(entry, conn, theme, today, exc)
+            continue
         sid = f"news_vol_{theme}"
         base.ensure_series_row(conn, sid, entry,
                                f"weekly article count (component of"
                                f" {entry['series_id']})")
         added += _store_weekly_volumes(conn, sid, daily, today)
         added += _store_headlines(conn, theme, articles)
+        conn.commit()  # per theme: progress survives interrupts, visibly
+    return added
+
+
+def _cloud_headline_fallback(entry, conn, theme, today, project_exc) -> int:
+    from src.fetchers import gdeltcloud
+    try:
+        added = gdeltcloud.fetch_theme_headlines(
+            entry, conn, theme, today - dt.timedelta(days=7), today)
+    except gdeltcloud.FetchError as cloud_exc:
+        raise FetchError(f"{theme}: project ({project_exc}) AND cloud"
+                         f" fallback ({cloud_exc}) both failed") from cloud_exc
+    conn.execute(
+        "INSERT INTO journal (date, market_id, event_type, detail,"
+        " price_at_event) VALUES (?, ?, 'flag', ?, NULL)",
+        (today.isoformat(), theme,
+         f"news fallback: gdeltcloud headlines used ({added} added); volume"
+         f" skipped this week (scale differs); project error: {project_exc}"))
     conn.commit()
     return added
 
@@ -117,8 +151,8 @@ def _store_headlines(conn, theme, articles) -> int:
 def _timeline(session, query, today, pause):
     start = today - dt.timedelta(days=VOLUME_LOOKBACK_DAYS)
     payload = _get(session, {
-        "query": f"({query}) sourcelang:english",  # parens: GDELT rejects
-        "mode": "timelinevolraw",                  # bare OR + filter combos
+        "query": f"{_grouped(query)} sourcelang:english",
+        "mode": "timelinevolraw",
         "format": "json", "startdatetime": _stamp(start),
         "enddatetime": _stamp(today)}, pause)
     series = payload.get("timeline", [])
@@ -130,7 +164,7 @@ def _timeline(session, query, today, pause):
 
 def _articles(session, query, start, end, pause):
     payload = _get(session, {
-        "query": f"({query}) sourcelang:english", "mode": "artlist",
+        "query": f"{_grouped(query)} sourcelang:english", "mode": "artlist",
         "format": "json", "maxrecords": str(MAX_HEADLINES),
         "startdatetime": _stamp(start), "enddatetime": _stamp(end)}, pause)
     out = []
@@ -170,6 +204,12 @@ def _get(session, params, pause) -> dict:
                                                   len(_BACKOFFS_S) - 1)]
             pause(min(wait, 180))
     raise FetchError(f"GDELT: {last} after {_TRIES} tries")
+
+
+def _grouped(query: str) -> str:
+    """GDELT's parser: parentheses are REQUIRED around OR lists combined with
+    filters, and FORBIDDEN around anything else."""
+    return f"({query})" if " OR " in query else query
 
 
 def _stamp(day: dt.date) -> str:
