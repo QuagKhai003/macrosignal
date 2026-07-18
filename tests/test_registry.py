@@ -31,13 +31,13 @@ def valid_entry(**overrides):
     return e
 
 
-def test_shipped_registry_has_7_admitted_signals():
+def test_shipped_registry_has_8_admitted_signals():
     entries = registry.load_registry(as_of=AS_OF)
-    assert len(entries) == 7
+    assert len(entries) == 8
     assert {e["series_id"] for e in entries} == {
         "net_liquidity", "cot_managed_money", "spine_prices",
         "real_yields", "credit_spread", "oil_inventories",
-        "market_valuation"}
+        "market_valuation", "manager_cash"}
 
 
 def test_valid_entry_passes():

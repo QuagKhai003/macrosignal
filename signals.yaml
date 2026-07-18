@@ -89,6 +89,19 @@ signals:
     elite_watcher: Every oil trading desk (the weekly EIA report is oil's scheduled market-mover), Pierre Andurand
     series_codes: [PET.WCESTUS1.W]
 
+  - series_id: manager_cash
+    name: BofA Global Fund Manager Survey headline cash level, percent (weather gauge 1)
+    group: A
+    source: MANUAL  # survey is a PDF; the operator types one number per month
+    source_url: https://www.bofa.com  # published mid-month via financial press
+    schedule: monthly
+    pub_lag_days: 0  # entered on the day it is read
+    history_start: 2001-04-01
+    window: fixed_threshold  # red below 4% (publisher's own trigger)
+    causal_sentence: Fund managers' spare cash is dry powder, and when almost none is left there is nobody remaining to buy the next dip.
+    elite_watcher: Michael Hartnett (BofA, the survey's author), every macro desk that reads the FMS
+    entered_with: python manual_entry.py manager_cash <value> --date YYYY-MM-DD
+
   - series_id: market_valuation
     name: US market cap / GDP, the Buffett indicator (weather gauge 2 - GDP leg)
     group: F
