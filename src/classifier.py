@@ -20,6 +20,7 @@
           weekly_run.
 """
 
+import re
 import sqlite3
 import time
 
@@ -98,7 +99,8 @@ def _build_chain(entry) -> list:
         key = config.get_key(p["key_env"])
         if key:
             chain.append((p["name"], p["model"],
-                          _KeyedSession(requests.Session(), p["url"], key)))
+                          _KeyedSession(requests.Session(), p["url"], key,
+                                        int(p.get("max_tokens", 5)))))
     return chain
 
 
@@ -108,7 +110,7 @@ def _classify_one(session, model, version, title, pause) -> str:
         "messages": [{"role": "user",
                       "content": PROMPTS[version].format(headline=title)}],
         "temperature": 0,
-        "max_tokens": 5,
+        "max_tokens": getattr(session, "max_tokens", 5),
         "seed": 0,
     }
     for attempt in (0, 1):
@@ -121,15 +123,26 @@ def _classify_one(session, model, version, title, pause) -> str:
         raise ClassifyError(f"HTTP {resp.status_code}")
     try:
         text = resp.json()["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, ValueError) as exc:
+    except (KeyError, IndexError, ValueError, TypeError) as exc:
         raise ClassifyError("unexpected payload") from exc
-    word = text.strip().lower().split()[0].strip(".,!:;\"'") if text.strip() else ""
-    return word if word in LABELS else "error"
+    return _parse_label(text)
+
+
+def _parse_label(text: str) -> str:
+    """Exactly one DISTINCT label word anywhere in the reply -> that label
+    (handles both bare one-word answers and reasoning models that think out
+    loud before concluding). None, or several different ones -> 'error' —
+    an ambiguous reply is never guessed into a sentiment."""
+    found = {w for w in re.findall(r"\b(excited|scared|neutral)\b",
+                                   (text or "").lower())}
+    return found.pop() if len(found) == 1 else "error"
 
 
 class _KeyedSession:
-    def __init__(self, session: requests.Session, url: str, key: str):
+    def __init__(self, session: requests.Session, url: str, key: str,
+                 max_tokens: int = 5):
         self._session, self._url, self._key = session, url, key
+        self.max_tokens = max_tokens
 
     def post(self, body, timeout):
         return self._session.post(

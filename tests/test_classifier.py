@@ -135,6 +135,20 @@ def test_no_keys_raises(conn, monkeypatch, tmp_path):
         classifier.classify_pending(conn, ENTRY)
 
 
+def test_parse_label_reasoning_and_ambiguity():
+    # bare answers, punctuation, casing
+    assert classifier._parse_label("Excited.") == "excited"
+    assert classifier._parse_label(" SCARED\n") == "scared"
+    # reasoning model thinking out loud but concluding one label
+    assert classifier._parse_label(
+        "The headline warns of war risk. Answer: scared") == "scared"
+    # deliberation naming several labels: ambiguous, never guessed
+    assert classifier._parse_label(
+        "Could be excited or scared... I say scared") == "error"
+    assert classifier._parse_label("bullish!") == "error"
+    assert classifier._parse_label("") == "error"
+
+
 def test_unknown_prompt_version_raises(conn):
     with pytest.raises(classifier.ClassifyError, match="unknown prompt"):
         classifier.classify_pending(conn, {**ENTRY, "prompt_version": "v9"},
