@@ -17,11 +17,11 @@
 
 import datetime as dt
 
-from src import db, registry, report, spine, states, weather
-from src.fetchers import cot, edgar, eia, fred, prices
+from src import classifier, db, registry, report, spine, states, weather
+from src.fetchers import cot, edgar, eia, fred, gdelt, prices
 
 FETCHERS = {"FRED": fred.fetch, "CFTC": cot.fetch, "Yahoo": prices.fetch,
-            "EIA": eia.fetch, "EDGAR": edgar.fetch}
+            "EIA": eia.fetch, "EDGAR": edgar.fetch, "GDELT": gdelt.fetch}
 
 
 def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
@@ -55,6 +55,17 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
                     "INSERT INTO journal (date, market_id, event_type, detail,"
                     " price_at_event) VALUES (?, NULL, 'flag', ?, NULL)",
                     (as_of, f"fetch failed {e['series_id']}: {exc}"))
+
+        news_entry = next((e for e in entries
+                           if e["series_id"] == "news_heat"), None)
+        if news_entry is not None:
+            try:  # the caged LLM: a failure means honest "insufficient" news
+                classifier.classify_pending(conn, news_entry)
+            except Exception as exc:
+                conn.execute(
+                    "INSERT INTO journal (date, market_id, event_type, detail,"
+                    " price_at_event) VALUES (?, NULL, 'flag', ?, NULL)",
+                    (as_of, f"classification failed: {exc}"))
 
         added += spine.derive_net_liquidity(conn, as_of)
         added += spine.derive_market_valuation(conn, as_of)

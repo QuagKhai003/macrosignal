@@ -52,6 +52,10 @@ def build(results: dict, prev_states: dict, week: str, weather: str = "YELLOW",
         if unchanged:
             lines.append(f"Everything else is unchanged"
                          f" ({unchanged} markets).")
+    for market, r in results.items():
+        if r.get("scared_and_abandoned"):
+            lines.append(f"{MARKET_NAME[market]}: Scary headlines, empty"
+                         f" trade — early type.")
     if full and whale:
         frac = "?" if whale["fraction"] is None else f"{whale['fraction']:.0%}"
         was = ("" if whale["prior_fraction"] is None

@@ -1,10 +1,11 @@
 """Weekly state persistence — observations in, states + journal out.
 
 @context  The bridge between the pure engine and the db: builds each market's
-          weekly observation dict (drivers + party + momentum + news stub),
-          steps the engine from the persisted prior state, writes the states
-          row, and journals every state CHANGE with the scores that caused it
-          (build plan Phase 2 task 5).
+          weekly observation dict (drivers + party + momentum + the real F6/F7
+          news answer since Phase 4), steps the engine from the persisted
+          prior state, writes the states row, and journals every state CHANGE
+          with the scores that caused it. Also raises the scared-and-abandoned
+          Early amplifier (F7 + party < 20).
 @done     run_week(): as-of obs assembly, prior-state reconstruction from
           scores_json (hysteresis flags + dead streak survive restarts),
           INSERT OR REPLACE per (market, ISO week), change-journaling with
@@ -22,7 +23,7 @@ import datetime as dt
 import json
 import sqlite3
 
-from src import drivers, engine, formulas, spine
+from src import drivers, engine, formulas, newsscore, spine
 
 PARTY_WINDOW = spine.WINDOW_OBS[("rolling3y", "weekly")]
 
@@ -48,22 +49,34 @@ def run_week(conn: sqlite3.Connection, as_of: dt.date,
         momentum_raw = formulas.sma200_flag(
             spine._values(conn, series["price"], as_of_str),
             prev=prior.get("momentum_raw"))
+        news = newsscore.score(conn, market, as_of_str,
+                               prev_loud=prior.get("news_loud"))
+        party_pct = formulas.party_score(
+            spine._values(conn, series["cot"], as_of_str), PARTY_WINDOW)
         obs = {
             "engine": engines[market]["engine"],
             "alive": engines[market]["alive"],
-            "party_pct": formulas.party_score(
-                spine._values(conn, series["cot"], as_of_str), PARTY_WINDOW),
+            "party_pct": party_pct,
             "momentum": formulas.two_week_confirm(
                 momentum_raw, prior.get("momentum_raw"),
                 prior.get("momentum")),
-            "news": "quiet",  # Phase 2 stub
+            "news": news["news_state"],
         }
+        # F7's Early amplifier: loud + scared + abandoned party
+        scared_and_abandoned = bool(
+            news["news_state"] == "loud_scared"
+            and party_pct is not None and party_pct < 20)
         prev = _prior_state(conn, market, week)
         new = engine.step(prev, obs)
         size = engine.size_fraction(new.state, new.age_weeks, weather_light)
         scores = {**{k: obs[k] for k in
                      ("engine", "alive", "party_pct", "momentum", "news")},
                   "momentum_raw": momentum_raw,
+                  "news_loud": news["loud"],
+                  "news_volume_ratio": news["volume_ratio"],
+                  "greed_ratio": news["greed_ratio"],
+                  "n_labeled": news["n_labeled"],
+                  "scared_and_abandoned": scared_and_abandoned,
                   "weather": weather_light,
                   "size_fraction": size,
                   "flags": {"party_full": new.party_full,
@@ -71,7 +84,9 @@ def run_week(conn: sqlite3.Connection, as_of: dt.date,
                             "dead_weeks": new.dead_weeks}}
         _persist(conn, market, week, new, scores, as_of_str, prev)
         results[market] = {"state": new.state, "age_weeks": new.age_weeks,
-                           "size_fraction": size, **obs}
+                           "size_fraction": size,
+                           "scared_and_abandoned": scared_and_abandoned,
+                           **obs}
     conn.commit()
     return results
 

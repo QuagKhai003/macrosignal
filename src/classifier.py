@@ -52,16 +52,17 @@ def classify_pending(conn: sqlite3.Connection, entry: dict, session=None,
     model, version = entry["model"], entry["prompt_version"]
     if version not in PROMPTS:
         raise ClassifyError(f"unknown prompt version {version}")
+    rows = conn.execute(
+        "SELECT headline_id, title FROM headlines WHERE label IS NULL"
+        " ORDER BY headline_id LIMIT ?", (limit,)).fetchall()
+    counts = {label: 0 for label in (*LABELS, "error")}
+    if not rows:
+        return counts  # nothing pending: no key needed, no calls made
     if session is None:
         key = config.get_key("NIM_API_KEY")
         if not key:
             raise ClassifyError("NIM_API_KEY missing from environment/.env")
         session = _KeyedSession(requests.Session(), key)
-
-    rows = conn.execute(
-        "SELECT headline_id, title FROM headlines WHERE label IS NULL"
-        " ORDER BY headline_id LIMIT ?", (limit,)).fetchall()
-    counts = {label: 0 for label in (*LABELS, "error")}
     for headline_id, title in rows:
         label = _classify_one(session, model, version, title, pause)
         conn.execute(

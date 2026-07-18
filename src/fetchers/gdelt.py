@@ -44,14 +44,15 @@ def fetch(entry: dict, conn: sqlite3.Connection, session=None,
     today = today or dt.date.today()
     added = 0
     for theme, query in entry["themes"].items():
+        daily = _timeline(session, query, today, pause)  # fetch BEFORE
+        articles = _articles(session, query,             # registering series
+                             today - dt.timedelta(days=7), today, pause)
         sid = f"news_vol_{theme}"
         base.ensure_series_row(conn, sid, entry,
                                f"weekly article count (component of"
                                f" {entry['series_id']})")
-        added += _store_weekly_volumes(conn, sid, _timeline(
-            session, query, today, pause), today)
-        added += _store_headlines(conn, theme, _articles(
-            session, query, today - dt.timedelta(days=7), today, pause))
+        added += _store_weekly_volumes(conn, sid, daily, today)
+        added += _store_headlines(conn, theme, articles)
     conn.commit()
     return added
 
