@@ -149,6 +149,35 @@ def derive_corn_stocks_use(conn: sqlite3.Connection, as_of: str) -> int:
     return added
 
 
+def derive_market_rate_differential(conn: sqlite3.Connection,
+                                    as_of: str) -> int:
+    """The euro engine's R4 driver: US minus euro-area MARKET 2y rates
+    (DGS2 − ecb_yc2y — both prices, no policy rate). One row per DGS2 date,
+    euro leg = latest published value at or before that date (different
+    holiday calendars). Stored as the derived us_ez2y_diff series."""
+    us = _series_rows(conn, "fred_dgs2", as_of)
+    ez = _series_rows(conn, "ecb_yc2y", as_of)
+    if not us or not ez:
+        return 0
+    conn.execute(  # derived series: own its parent row (FK) — no registry entry
+        "INSERT OR IGNORE INTO series VALUES ('us_ez2y_diff', 'derived',"
+        " '', 'daily', 'rolling10y',"
+        " 'US 2y minus euro-area AAA 2y, both market rates')")
+    ez_dates = [r[0] for r in ez]
+    added = 0
+    for data_date, pub, value in us:
+        i = bisect_right(ez_dates, data_date) - 1
+        if i < 0:
+            continue
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO observations VALUES"
+            " ('us_ez2y_diff', ?, ?, ?)",
+            (data_date, max(pub, ez[i][1]), value - ez[i][2]))
+        added += cur.rowcount
+    conn.commit()
+    return added
+
+
 def derive_oil_curve_spread(conn: sqlite3.Connection, as_of: str) -> int:
     """Oil's F9 curve leg (research R3): front-month minus 4th-month WTI
     futures, same trading day only. Positive spread = backwardation (today's

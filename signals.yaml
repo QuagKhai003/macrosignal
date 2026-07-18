@@ -198,6 +198,20 @@ signals:
       source_desc: SURVEY
       reference_period_desc: YEAR
 
+  - series_id: ez_2y_yield
+    name: Euro-area AAA 2-year market yield, ECB yield curve daily (euro engine driver v2, research R4)
+    group: H
+    source: ECB
+    source_url: https://data-api.ecb.europa.eu/service/data/YC/B.U2.EUR.4F.G_N_A.SV_C_YM.SR_2Y
+    schedule: daily
+    pub_lag_days: 1
+    history_start: 2004-09-06
+    window: rolling10y
+    causal_sentence: A currency strengthens when its market interest rates rise against the other side's, and market rates move the moment traders smell a change while policy rates step months later.
+    elite_watcher: FX carry desks worldwide; the ECB publishes this curve as its own market-rate reference
+    # stored as ecb_yc2y; src/spine derives us_ez2y_diff = DGS2 - ecb_yc2y
+    # (both MARKET rates — the R4 swap; us_ez_rate_diff keeps accumulating)
+
   - series_id: oil_curve
     name: WTI futures curve, front vs 4th month, EIA daily (oil's F9 curve leg, research R3)
     group: F

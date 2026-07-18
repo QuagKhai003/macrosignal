@@ -7,8 +7,9 @@
 @done     gold: real yields falling (13-week weekly change < 0) AND driver
           alive (52-wk rolling corr sign matches the 10-yr historical sign,
           |rho| >= 0.1). oil: commercial crude stocks below the same-calendar-
-          week 5-yr average (>= 4 of 5 prior years present). MARKETS registry.
-          cb_flow_strong exists but is DISCONNECTED (R2 kill verdict).
+          week 5-yr average (>= 4 of 5 prior years present) OR curve
+          backwardated (R3). MARKETS registry. cb_flow_strong DISCONNECTED
+          (R2 kill); eur PARKED driverless (R4 kill — both rate gaps failed).
 @todo     Phase 2.2 consumes alive-streaks for the 26-week dead rule; more
           plugins as markets are admitted (Phase 6 expansion).
 @limits   Read-only on the db; as-of filtered (pub_date <= as_of). None means
@@ -34,12 +35,16 @@ MARKETS = {
 
 # market -> (driver series, price series) for the "falling driver" engines.
 # Each rallies when its driver FALLS, and the F3 alive-check confirms the
-# historical sign still holds (whatever direction it is): gold vs real yields,
-# bonds vs inflation expectations, the euro vs the US-EZ rate gap.
+# historical sign still holds (whatever direction it is): gold vs real
+# yields, bonds vs inflation expectations.
+# eur PARKED (research R4 verdict, 2026-07-19, per RESEARCH.md's own
+# pre-registered plan): the policy-rate gap failed C1 (CONFIRMED −0.03%/wk)
+# and the market-vs-market gap (DGS2 − ECB AAA 2y) failed WORSE (−0.12%/wk).
+# The euro has no clean free driver; honest None beats an actively bad
+# signal. Both diff series keep accumulating for future research.
 FALLING_DRIVERS = {
     "gold": ("fred_dfii10", "price_gold"),
     "ust10y": ("fred_t10yie", "price_ust10y"),
-    "eur": ("us_ez_rate_diff", "price_eur"),
 }
 
 
