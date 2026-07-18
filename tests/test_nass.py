@@ -99,6 +99,14 @@ def put_dec_ratios(conn, per_year):
         [(f"{y}-12-01", f"{y + 1}-01-20", float(v)) for y, v in per_year.items()])
 
 
+def test_corn_engine_not_wired_into_engines(conn):
+    # KILLED by research R1: engines() must return None for corn even when
+    # ratio data exists (the mechanism stays testable below, but disconnected)
+    put_dec_ratios(conn, {y: 0.90 for y in range(2020, 2025)} | {2025: 0.70})
+    assert drivers.engines(conn, "2026-07-18")["corn"] == {"engine": None,
+                                                           "alive": None}
+
+
 def test_corn_engine_ratio_below_seasonal_average(conn):
     put_dec_ratios(conn, {y: 0.90 for y in range(2020, 2025)} | {2025: 0.70})
     assert drivers.corn_engine(conn, "2026-07-18") == {"engine": True,

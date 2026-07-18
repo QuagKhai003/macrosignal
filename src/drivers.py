@@ -51,7 +51,11 @@ def engines(conn: sqlite3.Connection, as_of: str,
     for market, (driver, price) in FALLING_DRIVERS.items():
         out[market] = falling_driver_engine(conn, driver, price, as_of)
     out["wti"] = oil_engine(conn, as_of, prev_engine=prev.get("wti"))
-    out["corn"] = corn_engine(conn, as_of, prev_engine=prev.get("corn"))
+    # corn engine KILLED (research R1 verdict, 2026-07-18): both raw stocks
+    # AND the spec's stocks-to-use recipe graded strongly ANTI-predictive over
+    # 15 yrs (CONFIRMED ~-1%/wk vs NEUTRAL +0.3%/wk) — quarterly tightness is
+    # known only after the price has moved. corn honestly has no driver; the
+    # ratio series keeps accumulating for future research (see RESEARCH.md).
     return out
 
 
