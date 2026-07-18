@@ -90,7 +90,8 @@ def test_engines_now_cover_five_markets(conn):
     # engines() should attempt gold/ust10y/eur (falling-driver) + wti (oil);
     # corn still None (no driver yet)
     result = drivers.engines(conn, AS_OF)
-    assert set(result) == {"gold", "wti", "ust10y", "eur", "corn"}
+    assert set(result) == {"gold", "wti", "ust10y", "eur", "corn",
+                           "silver", "copper", "natgas"}
     assert result["corn"] == {"engine": None, "alive": None}
 
 

@@ -21,7 +21,7 @@ def test_run_lays_weekly_rows(tmp_path):
     result = replay.run(conn, dt.date(2026, 6, 6), dt.date(2026, 6, 27))
     assert all(m["weeks"] == 4 for m in result.values())
     n = conn.execute("SELECT COUNT(*) FROM states").fetchone()[0]
-    assert n == 4 * 5  # 4 weeks x 5 markets, all NEUTRAL (empty db)
+    assert n == 4 * 8  # 4 weeks x 8 markets, all NEUTRAL (empty db)
     assert all(m["flips"] == 0 for m in result.values())
     conn.close()
 

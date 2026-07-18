@@ -211,7 +211,8 @@ def derive_oil_curve_spread(conn: sqlite3.Connection, as_of: str) -> int:
 def summarize(conn: sqlite3.Connection, as_of: str) -> dict:
     """The Phase 1 readouts, one dict — every value traceable to a formula."""
     out = {}
-    for sid in ("cot_gold", "cot_wti", "cot_ust10y", "cot_eur", "cot_corn"):
+    for sid in ("cot_gold", "cot_wti", "cot_ust10y", "cot_eur", "cot_corn",
+                "cot_silver", "cot_copper", "cot_natgas"):
         out[f"{sid}_party_pct"] = formulas.pct_rank(
             _values(conn, sid, as_of), WINDOW_OBS[("rolling3y", "weekly")])
     liq = _values(conn, "net_liquidity", as_of)
@@ -231,7 +232,7 @@ def summarize(conn: sqlite3.Connection, as_of: str) -> dict:
         _values(conn, "fred_dtwexbgs", as_of),
         WINDOW_OBS[("rolling10y", "daily")])
     for sid in ("price_gold", "price_wti", "price_ust10y", "price_eur",
-                "price_corn"):
+                "price_corn", "price_silver", "price_copper", "price_natgas"):
         out[f"{sid}_momentum"] = formulas.sma200_flag(_values(conn, sid, as_of))
     out["gold_realyield_corr_52w"] = _weekly_corr(
         conn, "fred_dfii10", "price_gold", as_of)

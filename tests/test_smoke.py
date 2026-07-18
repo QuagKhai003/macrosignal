@@ -66,12 +66,12 @@ def test_all_sources_down_still_completes(tmp_path, capsys):
     conn = db.connect(db_path)
     flags = conn.execute("SELECT COUNT(*) FROM journal"
                          " WHERE event_type = 'flag'").fetchone()[0]
-    # 7 FRED + CFTC + Yahoo + 2 EIA + EDGAR + GDELT + NASS + IMF + ECB
-    assert flags == 16
+    # 7 FRED + CFTC + Yahoo + 3 EIA + EDGAR + GDELT + NASS + IMF + ECB
+    assert flags == 17
     run_detail = conn.execute("SELECT detail FROM journal"
                               " WHERE event_type = 'run'").fetchone()[0]
-    assert "16 fetch failures" in run_detail
-    assert conn.execute("SELECT COUNT(*) FROM series").fetchone()[0] == 17
+    assert "17 fetch failures" in run_detail
+    assert conn.execute("SELECT COUNT(*) FROM series").fetchone()[0] == 18
     conn.close()
 
 
@@ -96,8 +96,8 @@ def test_partial_run_derives_net_liquidity(tmp_path, capsys):
     assert abs(rows[1][1] - 5986.71) < 0.001
     run_detail = conn.execute("SELECT detail FROM journal"
                               " WHERE event_type = 'run'").fetchone()[0]
-    assert "9 fetch failures" in run_detail  # all but FRED down (CFTC/Yahoo/
-    # 2 EIA/EDGAR/GDELT/IMF/ECB — cloud + NASS keyless here, so they fail)
+    assert "10 fetch failures" in run_detail  # all but FRED down (CFTC/Yahoo/
+    # 3 EIA/EDGAR/GDELT/IMF/ECB — cloud + NASS keyless here, so they fail)
     conn.close()
 
 
