@@ -87,8 +87,14 @@ def crowd_test(states: dict, weekly_prices: dict) -> dict:
 
 def weather_overlap(weather: dict, index_weekly: dict) -> dict:
     """weather: {week: GREEN/YELLOW/RED}; index_weekly: {week: px}. The 10
-    worst NON-OVERLAPPING 26-week index windows must touch YELLOW/RED in >=6
+    worst NON-OVERLAPPING 26-week index windows WITHIN THE REPLAY PERIOD
+    (§16: "the replay period's largest drawdowns" — the index is clipped to
+    the weeks the weather light exists for) must touch YELLOW/RED in >=6
     cases."""
+    if not weather:
+        return {"windows": [], "hits": 0, "pass": None}
+    lo, hi = min(weather), max(weather)
+    index_weekly = {w: px for w, px in index_weekly.items() if lo <= w <= hi}
     weeks = sorted(index_weekly)
     windows = []
     for i in range(len(weeks) - WINDOW_WEEKS):

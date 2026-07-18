@@ -23,15 +23,22 @@ REPLAY_START = dt.date(2011, 1, 8)  # a Saturday; 15+ years to today
 REPORT_PATH = "docs/VALIDATION.md"
 
 
-def main(today: dt.date | None = None) -> int:
+def main(today: dt.date | None = None, grade_only: bool = False) -> int:
+    """grade_only: recompute the criteria over the ALREADY-replayed states
+    (for grader fixes — the machine's states are untouched)."""
     today = today or dt.date.today()
     conn = db.connect()
     try:
-        conn.execute("DELETE FROM states")
-        conn.execute("DELETE FROM journal WHERE event_type = 'state_change'")
-        conn.commit()
-        print(f"replaying {REPLAY_START} -> {today} ...", flush=True)
-        summary = replay.run(conn, REPLAY_START, today)
+        if grade_only:
+            summary = replay.analyze(conn, replay.states.iso_week(REPLAY_START),
+                                     replay.states.iso_week(today))
+        else:
+            conn.execute("DELETE FROM states")
+            conn.execute("DELETE FROM journal WHERE event_type ="
+                         " 'state_change'")
+            conn.commit()
+            print(f"replaying {REPLAY_START} -> {today} ...", flush=True)
+            summary = replay.run(conn, REPLAY_START, today)
 
         as_of = today.isoformat()
         states = falsify.load_states(conn)
@@ -113,4 +120,4 @@ def _report(today, years, summary, c1, c2, c3, c4) -> str:
 
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8")
-    raise SystemExit(main())
+    raise SystemExit(main(grade_only="--grade-only" in sys.argv))

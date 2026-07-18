@@ -88,6 +88,18 @@ def test_crowd_test_none_without_crowded_entries():
 
 # ── criterion 3 ──────────────────────────────────────────────────────────────
 
+def test_weather_overlap_clips_to_replay_period():
+    # a monster crash BEFORE the weather light exists must not be graded
+    index = {}
+    px = 1000.0
+    for i in range(1, 301):
+        index[f"W{i:03d}"] = px
+        px *= 0.96 if 20 <= i <= 46 else 1.003  # pre-period crash at 20-46
+    weather = {f"W{i:03d}": "GREEN" for i in range(100, 301)}  # starts at 100
+    result = falsify.weather_overlap(weather, index)
+    assert all(s >= "W100" for _r, s, _e in result["windows"])
+
+
 def test_weather_overlap_counts_hits():
     # 200 weeks; one deep crash at weeks 80-106 flagged RED, gentle rise rest
     weather, index = {}, {}
