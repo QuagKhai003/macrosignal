@@ -67,7 +67,7 @@ def fetch(entry: dict, conn: sqlite3.Connection, session=None,
                                f" {entry['series_id']})")
         added += _store_weekly_volumes(conn, sid, daily, today)
         added += _store_headlines(conn, theme, articles)
-    conn.commit()
+        conn.commit()  # per theme: progress survives interrupts, visibly
     return added
 
 
