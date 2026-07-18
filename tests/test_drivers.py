@@ -137,7 +137,7 @@ def test_oil_engine_turns_off_above_band(conn):
 def test_engines_shape(conn):
     result = drivers.engines(conn, AS_OF)
     assert set(result) == {"gold", "wti", "ust10y", "eur", "corn",
-                           "silver", "copper", "natgas"}
+                           "silver", "copper", "natgas", "semis"}
     assert result["eur"] == {"engine": None, "alive": None}
     assert result["corn"] == {"engine": None, "alive": None}
     assert result["copper"] == {"engine": None, "alive": None}  # driverless

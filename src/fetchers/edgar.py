@@ -26,7 +26,7 @@ import sqlite3
 
 import requests
 
-from src.fetchers import base
+from src.fetchers import base, form4
 
 _HEADERS = {"User-Agent": "macrosignal personal research quangngokhai@gmail.com"}
 SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
@@ -55,6 +55,8 @@ def fetch(entry: dict, conn: sqlite3.Connection, session=None) -> int:
     added += _fetch_quarterlies(entry, conn, session, cik, filings)
     added += _fetch_13f_total(entry, conn, session, cik, filings)
     conn.commit()
+    # F13 universe rides this entry's config; a no-op while it is empty
+    added += form4.fetch(entry, conn, session=session)
     return added
 
 

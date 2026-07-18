@@ -23,7 +23,7 @@
 import datetime as dt
 import sqlite3
 
-from src import spine
+from src import formulas, spine
 
 # market id -> its component series (the state machine's working universe)
 MARKETS = {
@@ -38,6 +38,10 @@ MARKETS = {
     "silver": {"cot": "cot_silver", "price": "price_silver"},
     "copper": {"cot": "cot_copper", "price": "price_copper"},
     "natgas": {"cot": "cot_natgas", "price": "price_natgas"},
+    # the first equity theme (user pick 2026-07-19). No COT exists for a
+    # stock theme — cot_semis never fills and the party leg answers None
+    # honestly (F1); news/momentum/insiders/engine carry the state.
+    "semis": {"cot": "cot_semis", "price": "price_semis"},
 }
 
 
@@ -73,6 +77,7 @@ def engines(conn: sqlite3.Connection, as_of: str,
     # and cb_gold_flow keeps accumulating (see RESEARCH.md).
     out["wti"] = oil_engine(conn, as_of, prev_engine=prev.get("wti"))
     out["natgas"] = natgas_engine(conn, as_of, prev_engine=prev.get("natgas"))
+    out["semis"] = semis_engine(conn, as_of)
     # corn engine KILLED (research R1 verdict, 2026-07-18): both raw stocks
     # AND the spec's stocks-to-use recipe graded strongly ANTI-predictive over
     # 15 yrs (CONFIRMED ~-1%/wk vs NEUTRAL +0.3%/wk) — quarterly tightness is
@@ -188,6 +193,23 @@ def natgas_engine(conn: sqlite3.Connection, as_of: str,
     report (expansion batch 1). Same §5b hysteresis."""
     return seasonal_storage_engine(conn, "natgas_storage", as_of,
                                    prev_engine, exit_band)
+
+
+def semis_engine(conn: sqlite3.Connection, as_of: str) -> dict:
+    """F9 equity engine, verbatim: E_t = price over the 10-yr mean of the
+    theme's annual profits (semis_valuation); dear if its 20-yr percentile
+    > 70; profits rising = latest annual total > the prior one. Engine ✓ =
+    NOT dear AND rising. XBRL history starts ~2009, so the percentile
+    answers None for several more years (F1) — the engine stays honestly
+    None until the window matures; every other leg of the semis state works
+    now. alive mirrors data presence (no correlation concept)."""
+    values = spine._values(conn, "semis_valuation", as_of)
+    pct = formulas.pct_rank(values, spine.WINDOW_OBS[("rolling20y", "weekly")])
+    annual = spine._values(conn, "semis_earnings", as_of)
+    if pct is None or len(annual) < 2:
+        return {"engine": None, "alive": None}
+    rising = annual[-1] > annual[-2]
+    return {"engine": bool(pct <= 70 and rising), "alive": True}
 
 
 def seasonal_storage_engine(conn: sqlite3.Connection, sid: str, as_of: str,

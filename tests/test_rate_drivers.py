@@ -91,7 +91,7 @@ def test_engines_now_cover_five_markets(conn):
     # corn still None (no driver yet)
     result = drivers.engines(conn, AS_OF)
     assert set(result) == {"gold", "wti", "ust10y", "eur", "corn",
-                           "silver", "copper", "natgas"}
+                           "silver", "copper", "natgas", "semis"}
     assert result["corn"] == {"engine": None, "alive": None}
 
 

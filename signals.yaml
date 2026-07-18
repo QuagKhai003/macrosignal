@@ -68,6 +68,7 @@ signals:
       price_silver: SI=F
       price_copper: HG=F
       price_natgas: NG=F
+      price_semis: ^SOX  # semis theme momentum leg (equity engine = next batch)
     causal_sentence: Investors underreact to news and then herd, so a price above its own 200-day average tends to keep drifting the same way.
     elite_watcher: Trend-following funds (AQR, Man AHL, Winton) running the century-validated strategy
 
@@ -260,6 +261,23 @@ signals:
     # stored series = cb_gold_flow, tonnes/month: sum of per-country month-over-
     # month changes (combined sector S1XS1311, adjacent months only — panel
     # entries like China 2015-M06 contribute nothing). See src/fetchers/imf.py.
+
+  - series_id: semis_earnings
+    name: Semiconductor theme annual net income, SEC XBRL 10-K filings (F9 equity engine)
+    group: E
+    source: XBRL
+    source_url: https://data.sec.gov/api/xbrl/companyconcept/CIK0001045810/us-gaap/NetIncomeLoss.json
+    schedule: quarterly  # 10-Ks land once a year per company but trickle through the year
+    pub_lag_days: 0  # pub_date = the actual EDGAR filing date (true as-of)
+    history_start: 2009-01-01  # XBRL coverage floor; ~17 annual values by now
+    window: rolling20y
+    causal_sentence: A theme priced far above a decade of its real profits is running on hope, and hope-priced themes have less room left to rise.
+    elite_watcher: Value investors everywhere (the Shiller CAPE lineage applied to a sector)
+    tickers: [NVDA, AMD, AVGO, MU, INTC, TXN, QCOM, AMAT, LRCX, KLAC]
+    # per-ticker series earn_<ticker>; src/spine sums them (>=8 of 10 per
+    # fiscal year) then derives the weekly F9 ratio semis_valuation.
+    # HONEST LIMIT: the 20-yr percentile needs years it does not have yet —
+    # the cheap/dear answer stays None until the window matures (F1).
 
   - series_id: natgas_storage
     name: US working natural gas in underground storage, EIA weekly (natgas engine)

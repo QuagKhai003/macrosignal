@@ -178,6 +178,78 @@ def derive_market_rate_differential(conn: sqlite3.Connection,
     return added
 
 
+SEMIS_TICKERS = ["nvda", "amd", "avgo", "mu", "intc",
+                 "txn", "qcom", "amat", "lrcx", "klac"]
+SEMIS_MIN_COMPANIES = 8  # a fiscal year counts once >= 8 of 10 have filed
+
+
+def derive_semis_earnings(conn: sqlite3.Connection, as_of: str) -> int:
+    """Theme annual profit (F9's earnings input): sum of the universe's
+    fiscal-year net incomes, keyed on the CALENDAR year the fiscal year ends
+    in (chip fiscal calendars straggle). A year needs >= SEMIS_MIN_COMPANIES
+    filers; pub = the latest component filing (as-of honest). Stored as
+    semis_earnings (annual, $)."""
+    per_year: dict[int, list[tuple[str, float]]] = {}
+    for ticker in SEMIS_TICKERS:
+        for end, pub, value in _series_rows(conn, f"earn_{ticker}", as_of):
+            year = int(end[:4])
+            per_year.setdefault(year, []).append((pub, value))
+    conn.execute(  # derived series: own its parent row (FK) — no registry entry
+        "INSERT OR IGNORE INTO series VALUES ('semis_earnings', 'derived',"
+        " '', 'quarterly', 'rolling20y', 'theme annual net income, summed')")
+    added = 0
+    for year, parts in sorted(per_year.items()):
+        if len(parts) < SEMIS_MIN_COMPANIES:
+            continue
+        total = sum(v for _p, v in parts)
+        pub = max(p for p, _v in parts)
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO observations VALUES"
+            " ('semis_earnings', ?, ?, ?)", (f"{year}-12-31", pub, total))
+        added += cur.rowcount
+    conn.commit()
+    return added
+
+
+def derive_semis_valuation(conn: sqlite3.Connection, as_of: str) -> int:
+    """F9's E_t, weekly: theme price over the mean of the last 10 annual
+    profits (>= 8 present, the same min-data spirit as the seasonal engines).
+    One row per ISO week of price_semis; earnings visible as-of each week's
+    pub gate. Stored as semis_valuation (weekly ratio)."""
+    price = _series_rows(conn, "price_semis", as_of)
+    earnings = _series_rows(conn, "semis_earnings", as_of)
+    if not price or len(earnings) < 8:
+        return 0
+    conn.execute(  # derived series: own its parent row (FK) — no registry entry
+        "INSERT OR IGNORE INTO series VALUES ('semis_valuation', 'derived',"
+        " '', 'weekly', 'rolling20y', 'F9 E_t: price over 10-yr mean profit')")
+    weekly = _weekly_last_dated(price)
+    added = 0
+    for data_date, pub, close in weekly:
+        visible = [(d, p, v) for d, p, v in earnings if p <= data_date][-10:]
+        if len(visible) < 8:
+            continue
+        mean_earnings = sum(v for _d, _p, v in visible) / len(visible)
+        if mean_earnings <= 0:
+            continue  # a loss decade has no meaningful multiple; skip honestly
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO observations VALUES"
+            " ('semis_valuation', ?, ?, ?)",
+            (data_date, pub, close / mean_earnings))
+        added += cur.rowcount
+    conn.commit()
+    return added
+
+
+def _weekly_last_dated(rows) -> list:
+    """Last observation per ISO week, keeping (data_date, pub_date, value)."""
+    out = {}
+    for data_date, pub, value in rows:  # date-ordered -> last obs wins
+        iso = dt.date.fromisoformat(data_date).isocalendar()
+        out[(iso.year, iso.week)] = (data_date, pub, value)
+    return [out[k] for k in sorted(out)]
+
+
 def derive_oil_curve_spread(conn: sqlite3.Connection, as_of: str) -> int:
     """Oil's F9 curve leg (research R3): front-month minus 4th-month WTI
     futures, same trading day only. Positive spread = backwardation (today's

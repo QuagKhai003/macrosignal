@@ -7,19 +7,33 @@
           whale_berkshire.insider_tickers) ships EMPTY: the rule is complete
           and tested, the fetch loop is a no-op, nothing is faked.
 @done     cluster_flags(): pure sliding-window count of distinct buyers per
-          issuer from (issuer, buyer, date) buy events.
-@todo     When themes are chosen: per-ticker Form-4 fetch via EDGAR
-          submissions (same session/UA plumbing as src/fetchers/edgar.py) to
-          produce the buy events; flag lands in the report.
-@limits   PURE. Buy events must already be filtered to non-derivative
-          open-market purchases by the (future) fetch layer.
-@affects  Nothing live yet (empty universe); tests/test_insiders.py.
+          issuer from (issuer, buyer, date) buy events. current_flags():
+          the db-reading wrapper (as-of on FILING date) over insider_buys —
+          live since the semis batch (universe = 10 chip names,
+          src/fetchers/form4.py feeds the table).
+@todo     Equity engine (F9) + semis state entry — the next semis batch.
+@limits   cluster_flags stays PURE; the fetch layer guarantees events are
+          non-derivative open-market purchases.
+@affects  weekly report insider line; tests/test_insiders.py, test_form4.py.
 """
 
 import datetime as dt
 
 WINDOW_DAYS = 90
 MIN_BUYERS = 3
+
+
+def current_flags(conn, as_of: str) -> dict[str, bool]:
+    """F13 flags from the insider_buys table, as-of honest: only filings
+    published by as_of count, over transactions inside the trailing cluster
+    window (+ the window's own reach-back)."""
+    floor = (dt.date.fromisoformat(as_of)
+             - dt.timedelta(days=2 * WINDOW_DAYS)).isoformat()
+    events = conn.execute(
+        "SELECT ticker, buyer, trans_date FROM insider_buys"
+        " WHERE filing_date <= ? AND trans_date >= ?",
+        (as_of, floor)).fetchall()
+    return cluster_flags([tuple(e) for e in events])
 
 
 def cluster_flags(buy_events: list[tuple[str, str, str]]) -> dict[str, bool]:
