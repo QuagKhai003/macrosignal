@@ -312,6 +312,26 @@ signals:
     # (src/insiders.py @todo) — nothing is faked meanwhile.
     insider_tickers: [NVDA, AMD, AVGO, MU, INTC, TXN, QCOM, AMAT, LRCX, KLAC]
 
+  - series_id: whale_ledger
+    name: More whales - quarterly 13F stock-exposure totals for named legendary filers (actors A1)
+    group: B
+    source: EDGAR13F
+    source_url: https://data.sec.gov/submissions/CIK0001061768.json
+    schedule: quarterly
+    pub_lag_days: 0  # pub_date = the actual EDGAR filing date (true as-of)
+    history_start: 1999-05-01
+    window: rolling20y  # vs each whale's own history (§5c Rule 2)
+    causal_sentence: When several of the most patient large investors grow or cut their stock exposure in the same quarter, they are reading the same shift before the crowd does.
+    elite_watcher: Every allocator tracks these filings the week they land; 13F-tracking is an industry
+    whales:  # name -> zero-padded CIK (verified against EDGAR 2026-07-19)
+      baupost: "0001061768"
+      appaloosa: "0001006438"
+      soros: "0001029160"
+      pershing: "0001336528"
+      duquesne: "0001536411"
+    # CONTEXT, not a graded signal: feeds the report's whale-ledger lines;
+    # the falsification criteria are untouched (decision 2026-07-19).
+
   - series_id: manager_cash
     name: BofA Global Fund Manager Survey headline cash level, percent (weather gauge 1)
     group: A

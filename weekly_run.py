@@ -20,12 +20,12 @@ import datetime as dt
 from src import (alarms, classifier, db, insiders, registry, report, spine,
                  states, weather)
 from src.fetchers import (cot, earnings, ecb, edgar, eia, fred, gdelt, imf,
-                          nass, prices)
+                          nass, prices, whales)
 
 FETCHERS = {"FRED": fred.fetch, "CFTC": cot.fetch, "Yahoo": prices.fetch,
             "EIA": eia.fetch, "EDGAR": edgar.fetch, "GDELT": gdelt.fetch,
             "NASS": nass.fetch, "IMF": imf.fetch, "ECB": ecb.fetch,
-            "XBRL": earnings.fetch}
+            "XBRL": earnings.fetch, "EDGAR13F": whales.fetch}
 
 
 def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
@@ -89,6 +89,9 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
         for name, g in light["gauges"].items():
             summary[f"weather_{name}"] = g["value"]
         whale_panel = edgar.panel_data(conn, as_of)
+        ledger_cfg = next((e["whales"] for e in entries
+                           if e["series_id"] == "whale_ledger"), {})
+        whale_ledger = whales.ledger(conn, as_of, ledger_cfg)
         divergence = bool(
             light["gauges"]["manager_cash"]["red"] is True and whale_panel
             and whale_panel["fraction"] is not None
@@ -109,7 +112,8 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
                        weather=light["light"], summary=summary,
                        full=full, whale=whale_panel, divergence=divergence,
                        alarm_banner=budget["banner"],
-                       insider_flags=insider_flags))
+                       insider_flags=insider_flags,
+                       whale_ledger=whale_ledger))
     print("run complete")
     return 0
 
