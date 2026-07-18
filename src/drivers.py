@@ -57,12 +57,12 @@ def engines(conn: sqlite3.Connection, as_of: str,
 
 def corn_engine(conn: sqlite3.Connection, as_of: str,
                 prev_engine: bool | None = None, exit_band: float = 0.02) -> dict:
-    """Engine ✓ = corn grain stocks below their same-QUARTER average of the
-    prior 5 years (tightness → bullish), with the oil two-trigger hysteresis
-    (turns ✗ only above (1+band)× the seasonal average). Quarterly stocks are
-    keyed on the reference month (Mar/Jun/Sep/Dec); the prior-years average
-    uses the SAME month. Needs ≥4 prior same-quarter observations."""
-    rows = spine._series_rows(conn, "corn_stocks", as_of)
+    """Engine ✓ = corn STOCKS-TO-USE ratio below its same-QUARTER average of
+    the prior 5 years (research R1 — the spec's real §3.2 recipe; the raw-
+    stocks proxy was anti-predictive, L-007). Two-trigger hysteresis as oil:
+    turns ✗ only above (1+band)× the seasonal average. Quarterly, keyed on
+    the reference month; needs ≥4 prior same-quarter ratios."""
+    rows = spine._series_rows(conn, "corn_stocks_use", as_of)
     if not rows:
         return {"engine": None, "alive": None}
     latest_date, _, latest_value = rows[-1]

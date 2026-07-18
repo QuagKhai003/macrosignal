@@ -42,15 +42,15 @@ def fetch(entry: dict, conn: sqlite3.Connection, session=None) -> int:
         session = _KeyedSession(requests.Session(), key)
 
     lag = dt.timedelta(days=int(entry["pub_lag_days"]))
-    params = {**entry["nass_query"], "format": "JSON"}
-    resp = session.get(API_URL, params=params, timeout=120)
-    if resp.status_code != 200:
-        raise FetchError(f"NASS: HTTP {resp.status_code}")
-    try:
-        records = resp.json()["data"]
-    except (KeyError, ValueError, TypeError) as exc:
-        raise FetchError("NASS: unexpected payload") from exc
+    added = _fetch_stocks(entry, conn, session, lag)
+    if entry.get("nass_production_query"):
+        added += _fetch_production(entry, conn, session)
+    conn.commit()
+    return added
 
+
+def _fetch_stocks(entry, conn, session, lag) -> int:
+    records = _records(session, entry["nass_query"])
     rows = []
     for r in records:
         month = _PERIOD_MONTH.get((r.get("reference_period_desc") or "").upper())
@@ -64,9 +64,39 @@ def fetch(entry: dict, conn: sqlite3.Connection, session=None) -> int:
     if not rows:
         raise FetchError("NASS: zero usable corn-stocks rows")
     base.ensure_series_row(conn, "corn_stocks", entry, "USDA NASS corn grain stocks")
-    added = base.insert_observations(conn, "corn_stocks", rows)
-    conn.commit()
-    return added
+    return base.insert_observations(conn, "corn_stocks", rows)
+
+
+def _fetch_production(entry, conn, session) -> int:
+    """Annual production (the USE side of stocks-to-use, research R1).
+    data_date = harvest-year Dec 1; pub = the following Jan 15 (the annual
+    Crop Production report lands mid-January)."""
+    records = _records(session, entry["nass_production_query"])
+    rows = []
+    for r in records:
+        value = _num(r.get("Value"))
+        year = r.get("year")
+        if value is None or not year:
+            continue
+        data_date = dt.date(int(year), 12, 1)
+        pub = dt.date(int(year) + 1, 1, 15).isoformat()
+        rows.append((data_date.isoformat(), pub, value))
+    if not rows:
+        raise FetchError("NASS: zero usable corn-production rows")
+    base.ensure_series_row(conn, "corn_production", entry,
+                           "USDA NASS corn annual production")
+    return base.insert_observations(conn, "corn_production", rows)
+
+
+def _records(session, query) -> list:
+    resp = session.get(API_URL, params={**query, "format": "JSON"},
+                       timeout=120)
+    if resp.status_code != 200:
+        raise FetchError(f"NASS: HTTP {resp.status_code}")
+    try:
+        return resp.json()["data"]
+    except (KeyError, ValueError, TypeError) as exc:
+        raise FetchError("NASS: unexpected payload") from exc
 
 
 def _num(value) -> float | None:

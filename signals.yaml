@@ -188,6 +188,15 @@ signals:
       unit_desc: BU
       agg_level_desc: NATIONAL
       source_desc: SURVEY
+    # the USE side of stocks-to-use (research R1): annual production feeds the
+    # implied-disappearance calculation in src/spine.derive_corn_stocks_use
+    nass_production_query:
+      commodity_desc: CORN
+      statisticcat_desc: PRODUCTION
+      unit_desc: BU
+      agg_level_desc: NATIONAL
+      source_desc: SURVEY
+      reference_period_desc: YEAR
 
   - series_id: whale_berkshire
     name: Berkshire Hathaway cash position from 10-Q/10-K filings (the whale ledger)

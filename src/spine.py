@@ -112,6 +112,39 @@ def derive_rate_differential(conn: sqlite3.Connection, as_of: str) -> int:
     return added
 
 
+def derive_corn_stocks_use(conn: sqlite3.Connection, as_of: str) -> int:
+    """Corn's REAL driver (research R1, spec §3.2): stocks-to-use ratio.
+    Implied use over the trailing year = stocks_{t-4q} + production credited
+    between then and now − stocks_t (trade ignored — a stable small term).
+    Production is credited at its harvest-year Dec 1 data_date. Ratio =
+    stocks_t ÷ implied use; stored as corn_stocks_use (quarterly)."""
+    stocks = _series_rows(conn, "corn_stocks", as_of)
+    production = _series_rows(conn, "corn_production", as_of)
+    if len(stocks) < 5 or not production:
+        return 0
+    prod_dates = [r[0] for r in production]
+    added = 0
+    for i in range(4, len(stocks)):
+        d_now, pub_now, s_now = stocks[i]
+        d_prev, pub_prev, s_prev = stocks[i - 4]
+        # production credited in the window (d_prev, d_now]
+        lo = bisect_right(prod_dates, d_prev)
+        hi = bisect_right(prod_dates, d_now)
+        prod_in_window = sum(production[j][2] for j in range(lo, hi))
+        prod_pubs = [production[j][1] for j in range(lo, hi)]
+        use = s_prev + prod_in_window - s_now
+        if use <= 0:
+            continue  # nonsense window (data gap); skip honestly
+        ratio = s_now / use
+        pub = max([pub_now, pub_prev] + prod_pubs)
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO observations VALUES"
+            " ('corn_stocks_use', ?, ?, ?)", (d_now, pub, ratio))
+        added += cur.rowcount
+    conn.commit()
+    return added
+
+
 def summarize(conn: sqlite3.Connection, as_of: str) -> dict:
     """The Phase 1 readouts, one dict — every value traceable to a formula."""
     out = {}
