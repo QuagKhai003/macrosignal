@@ -93,6 +93,7 @@ def test_non_json_200_retries_like_throttle(conn):
             if self.calls == 1:
                 class Bad:
                     status_code = 200
+                    text = "<html>throttle page</html>"
                     def json(self):
                         raise ValueError("html throttle page")
                 return Bad()

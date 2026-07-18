@@ -98,7 +98,8 @@ def _store_headlines(conn, theme, articles) -> int:
 def _timeline(session, query, today, pause):
     start = today - dt.timedelta(days=VOLUME_LOOKBACK_DAYS)
     payload = _get(session, {
-        "query": f"{query} sourcelang:english", "mode": "timelinevolraw",
+        "query": f"({query}) sourcelang:english",  # parens: GDELT rejects
+        "mode": "timelinevolraw",                  # bare OR + filter combos
         "format": "json", "startdatetime": _stamp(start),
         "enddatetime": _stamp(today)}, pause)
     series = payload.get("timeline", [])
@@ -110,7 +111,7 @@ def _timeline(session, query, today, pause):
 
 def _articles(session, query, start, end, pause):
     payload = _get(session, {
-        "query": f"{query} sourcelang:english", "mode": "artlist",
+        "query": f"({query}) sourcelang:english", "mode": "artlist",
         "format": "json", "maxrecords": str(MAX_HEADLINES),
         "startdatetime": _stamp(start), "enddatetime": _stamp(end)}, pause)
     out = []
@@ -133,7 +134,8 @@ def _get(session, params, pause) -> dict:
             try:
                 return resp.json()
             except ValueError:
-                last = "200 with non-json body"  # throttle page: retry too
+                body = (resp.text or "")[:100].replace("\n", " ")
+                last = f"200 non-json: {body!r}"  # error text or throttle page
         else:
             last = f"HTTP {resp.status_code}"
         if attempt < _TRIES - 1:
