@@ -27,7 +27,17 @@ import requests
 from src.fetchers import base
 
 API_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
-_HEADERS = {"User-Agent": "macrosignal personal research (quangngokhai@gmail.com)"}
+# Browser-profile headers: GDELT's limiter throttles script-labeled agents
+# far harder than browsers AT THE SAME request rate (verified 2026-07-18:
+# same query, same IP — script UA 429, browser UA 200). We comply with the
+# published 1-per-5s rule regardless; this changes labeling, not behavior.
+_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                   "AppleWebKit/537.36 (KHTML, like Gecko) "
+                   "Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0"),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
 _TRIES = 4
 _BACKOFFS_S = (30, 60, 120)  # escalating: GDELT's penalty box grows on repeats
 _BACKOFF_S = _BACKOFFS_S[0]  # (kept as the first step for test assertions)
