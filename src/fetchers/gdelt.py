@@ -58,9 +58,15 @@ def fetch(entry: dict, conn: sqlite3.Connection, session=None,
     for theme, query in entry["themes"].items():
         if _week_already_fetched(conn, theme, today):
             continue  # same-week re-runs make ZERO GDELT calls
-        daily = _timeline(session, query, today, pause)  # fetch BEFORE
-        articles = _articles(session, query,             # registering series
-                             today - dt.timedelta(days=7), today, pause)
+        try:
+            daily = _timeline(session, query, today, pause)  # fetch BEFORE
+            articles = _articles(session, query,             # registering
+                                 today - dt.timedelta(days=7), today, pause)
+        except (FetchError, requests.RequestException, OSError) as exc:
+            # keyed fallback (user decision): headlines only — Cloud counts
+            # story clusters, not articles, so volume rows are never mixed in
+            added += _cloud_headline_fallback(entry, conn, theme, today, exc)
+            continue
         sid = f"news_vol_{theme}"
         base.ensure_series_row(conn, sid, entry,
                                f"weekly article count (component of"
@@ -68,6 +74,24 @@ def fetch(entry: dict, conn: sqlite3.Connection, session=None,
         added += _store_weekly_volumes(conn, sid, daily, today)
         added += _store_headlines(conn, theme, articles)
         conn.commit()  # per theme: progress survives interrupts, visibly
+    return added
+
+
+def _cloud_headline_fallback(entry, conn, theme, today, project_exc) -> int:
+    from src.fetchers import gdeltcloud
+    try:
+        added = gdeltcloud.fetch_theme_headlines(
+            entry, conn, theme, today - dt.timedelta(days=7), today)
+    except gdeltcloud.FetchError as cloud_exc:
+        raise FetchError(f"{theme}: project ({project_exc}) AND cloud"
+                         f" fallback ({cloud_exc}) both failed") from cloud_exc
+    conn.execute(
+        "INSERT INTO journal (date, market_id, event_type, detail,"
+        " price_at_event) VALUES (?, ?, 'flag', ?, NULL)",
+        (today.isoformat(), theme,
+         f"news fallback: gdeltcloud headlines used ({added} added); volume"
+         f" skipped this week (scale differs); project error: {project_exc}"))
+    conn.commit()
     return added
 
 
