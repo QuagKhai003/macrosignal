@@ -29,7 +29,9 @@ from src.fetchers import base
 API_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
 _HEADERS = {"User-Agent": "macrosignal personal research (quangngokhai@gmail.com)"}
 _TRIES = 4
-_BACKOFF_S = 8
+_BACKOFFS_S = (30, 60, 120)  # escalating: GDELT's penalty box grows on repeats
+_BACKOFF_S = _BACKOFFS_S[0]  # (kept as the first step for test assertions)
+_PACE_S = 6      # GDELT's own rule: one request per 5 seconds — pace EVERY call
 VOLUME_LOOKBACK_DAYS = 400  # > 52 weeks for the F6 trailing mean
 MAX_HEADLINES = 100
 
@@ -122,17 +124,21 @@ def _articles(session, query, start, end, pause):
 
 
 def _get(session, params, pause) -> dict:
+    last = "no response"
     for attempt in range(_TRIES):
+        pause(_PACE_S)  # proactive pacing: never hit the 1-per-5s wall
         resp = session.get(API_URL, params=params, headers=_HEADERS,
                            timeout=90)
         if resp.status_code == 200:
             try:
                 return resp.json()
-            except ValueError as exc:
-                raise FetchError("GDELT: non-json response") from exc
+            except ValueError:
+                last = "200 with non-json body"  # throttle page: retry too
+        else:
+            last = f"HTTP {resp.status_code}"
         if attempt < _TRIES - 1:
-            pause(_BACKOFF_S)  # GDELT throttle: back off and retry
-    raise FetchError(f"GDELT: HTTP {resp.status_code} after {_TRIES} tries")
+            pause(_BACKOFFS_S[min(attempt, len(_BACKOFFS_S) - 1)])
+    raise FetchError(f"GDELT: {last} after {_TRIES} tries")
 
 
 def _stamp(day: dt.date) -> str:

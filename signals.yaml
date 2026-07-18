@@ -107,8 +107,14 @@ signals:
       ust10y: '"treasury yields" OR "bond market selloff" OR "10-year yield"'
       eur: '"euro exchange rate" OR "euro dollar" OR "ECB rate"'
       corn: '"corn price" OR "corn crop" OR "grain prices"'
-    # the caged LLM (decision 2026-07-18: NVIDIA NIM replaces Claude API)
-    model: meta/llama-3.1-8b-instruct
+    # the caged LLM (decision 2026-07-18: NIM primary, OpenRouter fallback).
+    # Tried in order; a provider without its key is skipped; mid-run failure
+    # fails over to the next (each label's audit row stamps provider:model).
+    providers:
+      - {name: nim, url: "https://integrate.api.nvidia.com/v1/chat/completions",
+         key_env: NIM_API_KEY, model: meta/llama-3.1-8b-instruct}
+      - {name: openrouter, url: "https://openrouter.ai/api/v1/chat/completions",
+         key_env: OPENROUTER_API_KEY, model: meta-llama/llama-3.1-8b-instruct}
     prompt_version: v1.0
 
   - series_id: whale_berkshire

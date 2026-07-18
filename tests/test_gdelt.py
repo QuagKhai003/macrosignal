@@ -86,12 +86,38 @@ def test_idempotent(conn):
                        pause=lambda s: None) == 0
 
 
+def test_non_json_200_retries_like_throttle(conn):
+    class ThrottlePageSession(FakeSession):
+        def get(self, url, params, headers, timeout):
+            self.calls += 1
+            if self.calls == 1:
+                class Bad:
+                    status_code = 200
+                    def json(self):
+                        raise ValueError("html throttle page")
+                return Bad()
+            return super().get(url, params, headers, timeout)
+    pauses = []
+    added = gdelt.fetch(ENTRY, conn, session=ThrottlePageSession(),
+                        today=TODAY, pause=pauses.append)
+    assert added == 4
+    assert gdelt._BACKOFF_S in pauses  # the bad response cost one backoff
+
+
+def test_every_call_is_paced(conn):
+    pauses = []
+    gdelt.fetch(ENTRY, conn, session=FakeSession(), today=TODAY,
+                pause=pauses.append)
+    # 2 successful calls (timeline + artlist), each preceded by a pace pause
+    assert pauses == [gdelt._PACE_S, gdelt._PACE_S]
+
+
 def test_429_backs_off_then_succeeds(conn):
     pauses = []
     added = gdelt.fetch(ENTRY, conn, session=FakeSession(status_first=429),
                         today=TODAY, pause=pauses.append)
     assert added == 4
-    assert pauses == [gdelt._BACKOFF_S]
+    assert gdelt._BACKOFF_S in pauses
 
 
 def test_headlines_start_unlabeled(conn):

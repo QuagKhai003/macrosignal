@@ -3,20 +3,21 @@
 @context  The ONE place the machine calls an LLM (Golden Rule). Every
           headline gets exactly one of {excited, scared, neutral} at
           temperature 0 with a frozen, versioned prompt; every label is
-          written onto its headline row (the audit log). The LLM never
-          produces a number: ratios are computed by src/newsscore.py from
-          these labels deterministically. Provider: NVIDIA NIM
-          (OpenAI-compatible; user decision 2026-07-18).
-@done     PROMPTS registry (v1.0 frozen — changing it = a new version + a
-          logged event); classify_pending(): NULL-label rows only
-          (idempotent), temp 0 + seed 0, strict one-word parse, unparseable
-          -> 'error' (excluded from ratios, never guessed), model + prompt
-          version stamped per row; retry once on throttle/5xx.
-@todo     Nothing — this file should almost never change. A new prompt is a
-          NEW dict entry, never an edit to v1.0.
-@limits   Requires NIM_API_KEY unless a session is injected (tests). Labels
-          update the headline row in place — that IS the audit record.
-@affects  headlines table; src/newsscore.py (4.3); weekly_run.
+          written onto its headline row (the audit log) stamped
+          "provider:model". The LLM never produces a number: ratios are
+          computed by src/newsscore.py deterministically. Providers are a
+          CONFIG CHAIN (signals.yaml `providers:`, both OpenAI-compatible):
+          NIM primary, OpenRouter fallback — user decision 2026-07-18.
+@done     PROMPTS registry (v1.0 frozen); classify_pending(): NULL-label rows
+          only (idempotent), temp 0 + seed 0, strict one-word parse,
+          unparseable -> 'error' (excluded, never guessed); providers without
+          keys skipped; sticky mid-run failover to the next provider with a
+          journal flag recording it; raises only when every provider is out.
+@todo     Nothing — a new prompt is a NEW dict entry, never an edit to v1.0.
+@limits   Determinism holds per (provider:model, prompt) pair — the audit
+          stamp on each row says exactly which pair produced it.
+@affects  headlines table (+ journal on failover); src/newsscore.py;
+          weekly_run.
 """
 
 import sqlite3
@@ -26,7 +27,6 @@ import requests
 
 from src import config
 
-API_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 LABELS = ("excited", "scared", "neutral")
 
 # FROZEN. v1.0 since 2026-07-18. Never edit an existing version.
@@ -46,10 +46,11 @@ class ClassifyError(RuntimeError):
     pass
 
 
-def classify_pending(conn: sqlite3.Connection, entry: dict, session=None,
+def classify_pending(conn: sqlite3.Connection, entry: dict, sessions=None,
                      limit: int = 500, pause=time.sleep) -> dict:
-    """Label up to `limit` unlabeled headlines. Returns counts per label."""
-    model, version = entry["model"], entry["prompt_version"]
+    """Label up to `limit` unlabeled headlines. Returns counts per label.
+    sessions: optional [(name, model, session)] override for tests."""
+    version = entry["prompt_version"]
     if version not in PROMPTS:
         raise ClassifyError(f"unknown prompt version {version}")
     rows = conn.execute(
@@ -57,20 +58,48 @@ def classify_pending(conn: sqlite3.Connection, entry: dict, session=None,
         " ORDER BY headline_id LIMIT ?", (limit,)).fetchall()
     counts = {label: 0 for label in (*LABELS, "error")}
     if not rows:
-        return counts  # nothing pending: no key needed, no calls made
-    if session is None:
-        key = config.get_key("NIM_API_KEY")
-        if not key:
-            raise ClassifyError("NIM_API_KEY missing from environment/.env")
-        session = _KeyedSession(requests.Session(), key)
+        return counts  # nothing pending: no keys needed, no calls made
+
+    chain = sessions if sessions is not None else _build_chain(entry)
+    if not chain:
+        raise ClassifyError("no classification provider has a key configured")
+
+    active = 0
     for headline_id, title in rows:
-        label = _classify_one(session, model, version, title, pause)
+        while True:
+            name, model, session = chain[active]
+            try:
+                label = _classify_one(session, model, version, title, pause)
+                break
+            except ClassifyError as exc:
+                if active + 1 >= len(chain):
+                    conn.commit()  # keep the labels earned so far
+                    raise ClassifyError(
+                        f"all providers failed; last ({name}): {exc}") from exc
+                conn.execute(
+                    "INSERT INTO journal (date, market_id, event_type,"
+                    " detail, price_at_event) VALUES (date('now'), NULL,"
+                    " 'flag', ?, NULL)",
+                    (f"classifier failover {name} -> {chain[active + 1][0]}:"
+                     f" {exc}",))
+                active += 1
         conn.execute(
             "UPDATE headlines SET label = ?, model = ?, prompt_version = ?"
-            " WHERE headline_id = ?", (label, model, version, headline_id))
+            " WHERE headline_id = ?",
+            (label, f"{name}:{model}", version, headline_id))
         counts[label] += 1
     conn.commit()
     return counts
+
+
+def _build_chain(entry) -> list:
+    chain = []
+    for p in entry["providers"]:
+        key = config.get_key(p["key_env"])
+        if key:
+            chain.append((p["name"], p["model"],
+                          _KeyedSession(requests.Session(), p["url"], key)))
+    return chain
 
 
 def _classify_one(session, model, version, title, pause) -> str:
@@ -83,26 +112,26 @@ def _classify_one(session, model, version, title, pause) -> str:
         "seed": 0,
     }
     for attempt in (0, 1):
-        resp = session.post(API_URL, json=body, timeout=120)
+        resp = session.post(body, timeout=120)
         if resp.status_code == 200:
             break
         if attempt == 0 and resp.status_code in (429, 500, 502, 503):
             pause(5)
             continue
-        raise ClassifyError(f"NIM: HTTP {resp.status_code}")
+        raise ClassifyError(f"HTTP {resp.status_code}")
     try:
         text = resp.json()["choices"][0]["message"]["content"]
     except (KeyError, IndexError, ValueError) as exc:
-        raise ClassifyError("NIM: unexpected payload") from exc
+        raise ClassifyError("unexpected payload") from exc
     word = text.strip().lower().split()[0].strip(".,!:;\"'") if text.strip() else ""
     return word if word in LABELS else "error"
 
 
 class _KeyedSession:
-    def __init__(self, session: requests.Session, key: str):
-        self._session, self._key = session, key
+    def __init__(self, session: requests.Session, url: str, key: str):
+        self._session, self._url, self._key = session, url, key
 
-    def post(self, url, json, timeout):
+    def post(self, body, timeout):
         return self._session.post(
-            url, json=json, timeout=timeout,
+            self._url, json=body, timeout=timeout,
             headers={"Authorization": f"Bearer {self._key}"})
