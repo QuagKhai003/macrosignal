@@ -23,7 +23,9 @@ ENTRY = {
     "window": "fixed_threshold", "pub_lag_days": 0,
     "themes": {"wti": '"oil price" OR "crude oil"'},
     "cloud_fallback": {"url": "https://cloud.example/v2/stories",
-                       "key_env": "GDLTE_CLOUD_API_KEY"},
+                       "key_envs": ["GDLTE_CLOUD_API_KEY",
+                                    "GDLTE_CLOUD_API_KEY_2",
+                                    "GDLTE_CLOUD_API_KEY_3"]},
 }
 TODAY = dt.date(2026, 7, 18)
 
@@ -41,14 +43,18 @@ CLOUD_PAGE = {
 
 
 class CloudSession:
-    def __init__(self, status=200):
-        self.calls, self._status = [], status
+    """statuses: per-call HTTP codes (200 default once exhausted)."""
+
+    def __init__(self, statuses=None):
+        self.calls, self._statuses = [], statuses or []
 
     def get(self, url, params, timeout, headers):
+        i = len(self.calls)
         self.calls.append((url, dict(params), headers))
+        status = self._statuses[i] if i < len(self._statuses) else 200
 
         class R:
-            status_code = self._status
+            status_code = status
             def json(self):
                 return CLOUD_PAGE
         return R()
@@ -61,7 +67,9 @@ class Down:
 
 @pytest.fixture()
 def conn(tmp_path, monkeypatch):
-    monkeypatch.setenv("GDLTE_CLOUD_API_KEY", "gdelt_sk_test")
+    monkeypatch.setenv("GDLTE_CLOUD_API_KEY", "gdelt_sk_1")
+    monkeypatch.setenv("GDLTE_CLOUD_API_KEY_2", "gdelt_sk_2")
+    monkeypatch.setenv("GDLTE_CLOUD_API_KEY_3", "gdelt_sk_3")
     conn = db.connect(tmp_path / "t.db")
     db.init_db(conn)
     yield conn
@@ -81,16 +89,38 @@ def test_cloud_fills_headlines_only(conn):
     assert added == 2
     assert conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0] == 0
     url, params, headers = session.calls[0]
-    assert headers["Authorization"] == "Bearer gdelt_sk_test"
+    assert headers["Authorization"] == "Bearer gdelt_sk_1"  # first key
     assert params["search"] == "oil price crude oil"
     assert params["languages"] == "en"
 
 
-def test_missing_key_raises(conn, monkeypatch):
-    monkeypatch.delenv("GDLTE_CLOUD_API_KEY")
+def test_exhausted_key_rolls_to_next(conn):
+    # key 1 quota-dead (429), key 2 succeeds; retries key 1 first
+    session = CloudSession(statuses=[429, 429, 429, 200])
+    added = gdeltcloud.fetch_theme_headlines(
+        ENTRY, conn, "wti", TODAY - dt.timedelta(days=7), TODAY,
+        session=session, pause=lambda s: None)
+    assert added == 2
+    used_keys = [h["Authorization"] for _u, _p, h in session.calls]
+    assert used_keys[:3] == ["Bearer gdelt_sk_1"] * 3   # 3 retries on key 1
+    assert used_keys[3] == "Bearer gdelt_sk_2"          # then key 2
+
+
+def test_all_keys_exhausted_raises(conn):
+    session = CloudSession(statuses=[429] * 20)  # every key, every retry
+    with pytest.raises(gdeltcloud.FetchError, match="all 3 keys exhausted"):
+        gdeltcloud.fetch_theme_headlines(
+            ENTRY, conn, "wti", TODAY - dt.timedelta(days=7), TODAY,
+            session=session, pause=lambda s: None)
+
+
+def test_no_keys_present_raises(conn, monkeypatch):
+    for n in ("GDLTE_CLOUD_API_KEY", "GDLTE_CLOUD_API_KEY_2",
+              "GDLTE_CLOUD_API_KEY_3"):
+        monkeypatch.delenv(n, raising=False)
     from src import config
     monkeypatch.setattr(config, "ENV_PATH", __import__("pathlib").Path("absent"))
-    with pytest.raises(gdeltcloud.FetchError, match="GDLTE_CLOUD_API_KEY"):
+    with pytest.raises(gdeltcloud.FetchError, match="no GDELT Cloud key"):
         gdeltcloud.fetch_theme_headlines(ENTRY, conn, "wti",
                                          TODAY - dt.timedelta(days=7), TODAY,
                                          session=CloudSession())

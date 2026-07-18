@@ -105,7 +105,11 @@ signals:
     # Project counts articles; mixing scales would corrupt the F6 ratio.
     cloud_fallback:
       url: https://gdeltcloud.com/api/v2/stories
-      key_env: GDLTE_CLOUD_API_KEY
+      # free tier = 100 requests/month/key; rotate through keys, advancing to
+      # the next when one is quota-exhausted (429 / PLAN_REQUIRED)
+      key_envs: [GDLTE_CLOUD_API_KEY, GDLTE_CLOUD_API_KEY_2,
+                 GDLTE_CLOUD_API_KEY_3, GDLTE_CLOUD_API_KEY_4,
+                 GDLTE_CLOUD_API_KEY_5]
     # GDELT query per theme — deterministic, editable config (build plan Phase 4)
     themes:
       gold: '"gold price" OR "gold rally" OR "gold market"'
