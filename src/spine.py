@@ -122,6 +122,10 @@ def derive_corn_stocks_use(conn: sqlite3.Connection, as_of: str) -> int:
     production = _series_rows(conn, "corn_production", as_of)
     if len(stocks) < 5 or not production:
         return 0
+    conn.execute(  # derived series: own its parent row (FK) — no registry entry
+        "INSERT OR IGNORE INTO series VALUES ('corn_stocks_use', 'derived',"
+        " '', 'quarterly', 'same_quarter_5y_avg',"
+        " 'stocks divided by implied trailing-year use')")
     prod_dates = [r[0] for r in production]
     added = 0
     for i in range(4, len(stocks)):
