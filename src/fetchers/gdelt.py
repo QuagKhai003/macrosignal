@@ -46,6 +46,8 @@ def fetch(entry: dict, conn: sqlite3.Connection, session=None,
     today = today or dt.date.today()
     added = 0
     for theme, query in entry["themes"].items():
+        if _week_already_fetched(conn, theme, today):
+            continue  # same-week re-runs make ZERO GDELT calls
         daily = _timeline(session, query, today, pause)  # fetch BEFORE
         articles = _articles(session, query,             # registering series
                              today - dt.timedelta(days=7), today, pause)
@@ -68,6 +70,23 @@ def fetch_window(entry: dict, conn: sqlite3.Connection, theme: str,
     added = _store_headlines(conn, theme, rows)
     conn.commit()
     return added
+
+
+def _week_already_fetched(conn, theme: str, today: dt.date) -> bool:
+    """True when this week's GDELT work is already stored: the last COMPLETED
+    ISO week's volume row exists and the trailing week has headlines. Makes
+    re-runs free and keeps us out of the rate limiter entirely."""
+    iso = today.isocalendar()
+    last_sunday = (today - dt.timedelta(days=iso.weekday))
+    vol = conn.execute(
+        "SELECT 1 FROM observations WHERE series_id = ? AND data_date = ?",
+        (f"news_vol_{theme}", last_sunday.isoformat())).fetchone()
+    if vol is None:
+        return False
+    heads = conn.execute(
+        "SELECT COUNT(*) FROM headlines WHERE theme = ? AND seen_date > ?",
+        (theme, (today - dt.timedelta(days=7)).isoformat())).fetchone()[0]
+    return heads > 0
 
 
 def _store_weekly_volumes(conn, sid, daily_points, today) -> int:
@@ -139,7 +158,17 @@ def _get(session, params, pause) -> dict:
         else:
             last = f"HTTP {resp.status_code}"
         if attempt < _TRIES - 1:
-            pause(_BACKOFFS_S[min(attempt, len(_BACKOFFS_S) - 1)])
+            # honor the server's own Retry-After when it names one (docs:
+            # 429s carry it); else escalate our guesses; cap at 3 minutes
+            retry_after = 0
+            try:
+                retry_after = int(getattr(resp, "headers", {}).get(
+                    "Retry-After", 0))
+            except (TypeError, ValueError):
+                pass
+            wait = retry_after or _BACKOFFS_S[min(attempt,
+                                                  len(_BACKOFFS_S) - 1)]
+            pause(min(wait, 180))
     raise FetchError(f"GDELT: {last} after {_TRIES} tries")
 
 

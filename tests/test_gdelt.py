@@ -121,6 +121,36 @@ def test_429_backs_off_then_succeeds(conn):
     assert gdelt._BACKOFF_S in pauses
 
 
+def test_same_week_rerun_makes_zero_calls(conn):
+    session1 = FakeSession()
+    gdelt.fetch(ENTRY, conn, session=session1, today=TODAY,
+                pause=lambda s: None)
+    session2 = FakeSession()
+    added = gdelt.fetch(ENTRY, conn, session=session2, today=TODAY,
+                        pause=lambda s: None)
+    assert added == 0
+    assert session2.calls == 0  # short-circuit: no network at all
+
+
+def test_retry_after_header_honored(conn):
+    class RetryAfterSession(FakeSession):
+        def get(self, url, params, headers, timeout):
+            self.calls += 1
+            if self.calls == 1:
+                class R:
+                    status_code = 429
+                    text = ""
+                    headers = {"Retry-After": "45"}
+                    def json(self):
+                        return {}
+                return R()
+            return super().get(url, params, headers, timeout)
+    pauses = []
+    gdelt.fetch(ENTRY, conn, session=RetryAfterSession(), today=TODAY,
+                pause=pauses.append)
+    assert 45 in pauses  # the server's own number, not our guess
+
+
 def test_headlines_start_unlabeled(conn):
     gdelt.fetch(ENTRY, conn, session=FakeSession(), today=TODAY,
                 pause=lambda s: None)
