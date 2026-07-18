@@ -51,7 +51,34 @@ def engines(conn: sqlite3.Connection, as_of: str,
     for market, (driver, price) in FALLING_DRIVERS.items():
         out[market] = falling_driver_engine(conn, driver, price, as_of)
     out["wti"] = oil_engine(conn, as_of, prev_engine=prev.get("wti"))
+    out["corn"] = corn_engine(conn, as_of, prev_engine=prev.get("corn"))
     return out
+
+
+def corn_engine(conn: sqlite3.Connection, as_of: str,
+                prev_engine: bool | None = None, exit_band: float = 0.02) -> dict:
+    """Engine ✓ = corn grain stocks below their same-QUARTER average of the
+    prior 5 years (tightness → bullish), with the oil two-trigger hysteresis
+    (turns ✗ only above (1+band)× the seasonal average). Quarterly stocks are
+    keyed on the reference month (Mar/Jun/Sep/Dec); the prior-years average
+    uses the SAME month. Needs ≥4 prior same-quarter observations."""
+    rows = spine._series_rows(conn, "corn_stocks", as_of)
+    if not rows:
+        return {"engine": None, "alive": None}
+    latest_date, _, latest_value = rows[-1]
+    month = dt.date.fromisoformat(latest_date).month
+    priors = [v for d, _p, v in rows[:-1]
+              if dt.date.fromisoformat(d).month == month][-5:]
+    if len(priors) < 4:
+        return {"engine": None, "alive": None}
+    average = sum(priors) / len(priors)
+    if latest_value < average:
+        engine = True
+    elif latest_value > (1.0 + exit_band) * average:
+        engine = False
+    else:
+        engine = prev_engine if prev_engine is not None else False
+    return {"engine": engine, "alive": True}
 
 
 def falling_driver_engine(conn: sqlite3.Connection, driver_sid: str,
