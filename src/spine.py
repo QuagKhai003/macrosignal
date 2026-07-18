@@ -72,8 +72,9 @@ def summarize(conn: sqlite3.Connection, as_of: str) -> dict:
     out["net_liquidity_falling"] = formulas.is_falling(liq, lag=13)
     out["real_yield_pct"] = formulas.pct_rank(
         _values(conn, "fred_dfii10", as_of), WINDOW_OBS[("rolling10y", "daily")])
+    # gauge series = BAA10Y (L-001 fix: full history; HY OAS still capped)
     out["credit_spread_pct"] = formulas.pct_rank(
-        _values(conn, "fred_bamlh0a0hym2", as_of),
+        _values(conn, "fred_baa10y", as_of),
         WINDOW_OBS[("rolling10y", "daily")])
     for sid in ("price_gold", "price_wti", "price_ust10y", "price_eur",
                 "price_corn"):

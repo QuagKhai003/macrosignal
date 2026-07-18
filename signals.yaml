@@ -89,14 +89,17 @@ signals:
     series_codes: [PET.WCESTUS1.W]
 
   - series_id: credit_spread
-    name: US high-yield option-adjusted spread, FRED BAMLH0A0HYM2 (weather gauge 3)
+    name: Corporate credit spread, Moody's Baa vs 10-yr Treasury (weather gauge 3)
     group: F
     source: FRED
-    source_url: https://fred.stlouisfed.org/graph/fredgraph.csv?id=BAMLH0A0HYM2
+    source_url: https://fred.stlouisfed.org/graph/fredgraph.csv?id=BAA10Y
     schedule: daily
     pub_lag_days: 1
-    history_start: 1996-12-31
+    history_start: 1986-01-02
     window: rolling10y
-    series_codes: [BAMLH0A0HYM2]
+    # BAA10Y = the working gauge (full history, uncapped). BAMLH0A0HYM2 (the
+    # tech spec's HY OAS) is FRED-capped at ~3 trailing years (L-001) — it
+    # keeps accumulating here so it can take over once its archive matures.
+    series_codes: [BAA10Y, BAMLH0A0HYM2]
     causal_sentence: Credit investors demand extra yield the moment repayment looks shakier, so spreads widen before equity markets admit trouble.
     elite_watcher: Howard Marks (Oaktree), the Federal Reserve's financial-stability monitors
