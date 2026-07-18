@@ -29,6 +29,23 @@ import requests
 from src import config
 
 LABELS = ("excited", "scared", "neutral")
+_RETRIES = 3            # per provider before failover
+_RETRY_BACKOFF_S = 5
+_PACE_S = 0.3           # gentle inter-call pacing: batches of hundreds
+
+
+def _json(resp):
+    try:
+        return resp.json()
+    except (ValueError, TypeError):
+        return None
+
+
+def _err_text(payload) -> str:
+    if isinstance(payload, dict) and "error" in payload:
+        err = payload["error"]
+        return str(err.get("message", err) if isinstance(err, dict) else err)
+    return "no choices in payload"
 
 # FROZEN. v1.0 since 2026-07-18. Never edit an existing version.
 PROMPTS = {
@@ -89,6 +106,7 @@ def classify_pending(conn: sqlite3.Connection, entry: dict, sessions=None,
             " WHERE headline_id = ?",
             (label, f"{name}:{model}", version, headline_id))
         counts[label] += 1
+        pause(_PACE_S)  # gentle pacing: hundreds of calls must not burst-limit
     conn.commit()
     return counts
 
@@ -113,18 +131,27 @@ def _classify_one(session, model, version, title, pause) -> str:
         "max_tokens": getattr(session, "max_tokens", 5),
         "seed": 0,
     }
-    for attempt in (0, 1):
+    message = None
+    last = "no response"
+    for attempt in range(_RETRIES):
         resp = session.post(body, timeout=120)
-        if resp.status_code == 200:
+        payload = _json(resp)
+        if resp.status_code == 200 and payload and "error" not in payload \
+                and payload.get("choices"):
+            message = payload["choices"][0]["message"]
             break
-        if attempt == 0 and resp.status_code in (429, 500, 502, 503):
-            pause(5)
-            continue
-        raise ClassifyError(f"HTTP {resp.status_code}")
-    try:
-        message = resp.json()["choices"][0]["message"]
-    except (KeyError, IndexError, ValueError, TypeError) as exc:
-        raise ClassifyError("unexpected payload") from exc
+        # OpenRouter (and others) wrap upstream errors in a 200 body with an
+        # {"error": {...}} object and NO choices — retryable, not a parse bug.
+        transient = resp.status_code in (429, 500, 502, 503) or (
+            resp.status_code == 200)
+        last = (f"HTTP {resp.status_code}" if resp.status_code != 200
+                else _err_text(payload))
+        if not transient:
+            raise ClassifyError(last)  # 4xx auth/bad-request: fail fast
+        if attempt < _RETRIES - 1:
+            pause(_RETRY_BACKOFF_S)
+    if message is None:
+        raise ClassifyError(last)
     label = _parse_label(message.get("content") or "")
     if label == "error":
         # some reasoning APIs put the words in a separate reasoning field

@@ -28,26 +28,30 @@ ENTRY = {
 
 
 class FakeResponse:
-    def __init__(self, content="neutral", status=200):
-        self._content, self.status_code = content, status
+    def __init__(self, content="neutral", status=200, error=None):
+        self._content, self.status_code, self._error = content, status, error
 
     def json(self):
+        if self._error is not None:
+            return {"error": {"message": self._error}}  # 200-wrapped error
         return {"choices": [{"message": {"content": self._content}}]}
 
 
 class FakeSession:
-    def __init__(self, replies=None, statuses=None):
+    def __init__(self, replies=None, statuses=None, errors=None):
         self.bodies = []
         self._replies = replies or ["neutral"]
         self._statuses = statuses or []
+        self._errors = errors or []
         self._n = 0
 
     def post(self, body, timeout):
         self.bodies.append(body)
         status = self._statuses[self._n] if self._n < len(self._statuses) else 200
+        error = self._errors[self._n] if self._n < len(self._errors) else None
         reply = self._replies[min(self._n, len(self._replies) - 1)]
         self._n += 1
-        return FakeResponse(reply, status)
+        return FakeResponse(reply, status, error)
 
 
 def chain(session, name="nim", model="meta/llama-3.1-8b-instruct"):
@@ -95,7 +99,7 @@ def test_only_null_rows_processed(conn):
 
 
 def test_failover_to_second_provider_with_journal_flag(conn):
-    primary = FakeSession(statuses=[500, 500])         # dies even after retry
+    primary = FakeSession(statuses=[500, 500, 500])   # exhausts 3 retries
     fallback = FakeSession(replies=["neutral"])
     sessions = [("nim", "m1", primary), ("openrouter", "m2", fallback)]
     counts = classifier.classify_pending(conn, ENTRY, sessions=sessions,
@@ -108,8 +112,22 @@ def test_failover_to_second_provider_with_journal_flag(conn):
     assert "failover nim -> openrouter" in flag
 
 
+def test_error_wrapped_in_200_triggers_failover(conn):
+    # OpenRouter's real behavior: HTTP 200 with an {"error":...} body
+    primary = FakeSession(errors=["ResourceExhausted 16/16"] * 3)
+    fallback = FakeSession(replies=["scared"])
+    sessions = [("nim", "m1", primary), ("openrouter", "m2", fallback)]
+    counts = classifier.classify_pending(conn, ENTRY, sessions=sessions,
+                                         pause=lambda s: None)
+    assert counts["scared"] == 3
+    flag = conn.execute("SELECT detail FROM journal WHERE event_type ="
+                        " 'flag'").fetchone()[0]
+    assert "ResourceExhausted" in flag
+
+
 def test_all_providers_down_raises_but_keeps_earned_labels(conn):
-    ok_then_dead = FakeSession(replies=["excited"], statuses=[200, 500, 500])
+    ok_then_dead = FakeSession(replies=["excited"],
+                               statuses=[200, 500, 500, 500])
     sessions = [("nim", "m1", ok_then_dead)]
     with pytest.raises(classifier.ClassifyError, match="all providers failed"):
         classifier.classify_pending(conn, ENTRY, sessions=sessions,
@@ -119,12 +137,20 @@ def test_all_providers_down_raises_but_keeps_earned_labels(conn):
     assert labeled == 1  # the first label survived the crash
 
 
-def test_retry_once_on_throttle(conn):
+def test_retries_on_throttle_then_succeeds(conn):
     session = FakeSession(replies=["neutral"], statuses=[429, 200])
     pauses = []
     classifier.classify_pending(conn, ENTRY, sessions=chain(session),
                                 pause=pauses.append)
-    assert pauses == [5]
+    assert 5 in pauses  # the retry backoff fired
+
+
+def test_auth_error_fails_fast_no_retry(conn):
+    session = FakeSession(statuses=[401])
+    with pytest.raises(classifier.ClassifyError, match="all providers failed"):
+        classifier.classify_pending(conn, ENTRY, sessions=chain(session),
+                                    pause=lambda s: None)
+    assert len(session.bodies) == 1  # 401 not retried
 
 
 def test_no_keys_raises(conn, monkeypatch, tmp_path):
