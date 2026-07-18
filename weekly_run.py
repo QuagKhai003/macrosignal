@@ -117,4 +117,11 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
 if __name__ == "__main__":
     import sys
     sys.stdout.reconfigure(encoding="utf-8")  # report uses em-dashes
+    if "--health" in sys.argv:  # cheap self-check, no fetching (batch 6.4)
+        from src import health
+        conn = db.connect()
+        try:
+            raise SystemExit(health.check(conn))
+        finally:
+            conn.close()
     raise SystemExit(main(full="--full" in sys.argv))

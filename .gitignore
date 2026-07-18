@@ -20,6 +20,7 @@ __pycache__/
 coverage/
 .cache/
 *.log
+logs/
 # tests/    ← stays committed (user chose: tests are product code)
 
 # ── local data (rebuildable from sources) ──
