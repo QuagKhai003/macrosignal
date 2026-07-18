@@ -7,7 +7,9 @@
 @done     gold: real yields falling (13-week weekly change < 0) AND driver
           alive (52-wk rolling corr sign matches the 10-yr historical sign,
           |rho| >= 0.1). oil: commercial crude stocks below the same-calendar-
-          week 5-yr average (>= 4 of 5 prior years present). MARKETS registry.
+          week 5-yr average (>= 4 of 5 prior years present) OR curve
+          backwardated (R3). MARKETS registry. cb_flow_strong DISCONNECTED
+          (R2 kill); eur PARKED driverless (R4 kill — both rate gaps failed).
 @todo     Phase 2.2 consumes alive-streaks for the 26-week dead rule; more
           plugins as markets are admitted (Phase 6 expansion).
 @limits   Read-only on the db; as-of filtered (pub_date <= as_of). None means
@@ -31,28 +33,98 @@ MARKETS = {
 }
 
 
+# market -> (driver series, price series) for the "falling driver" engines.
+# Each rallies when its driver FALLS, and the F3 alive-check confirms the
+# historical sign still holds (whatever direction it is): gold vs real
+# yields, bonds vs inflation expectations.
+# eur PARKED (research R4 verdict, 2026-07-19, per RESEARCH.md's own
+# pre-registered plan): the policy-rate gap failed C1 (CONFIRMED −0.03%/wk)
+# and the market-vs-market gap (DGS2 − ECB AAA 2y) failed WORSE (−0.12%/wk).
+# The euro has no clean free driver; honest None beats an actively bad
+# signal. Both diff series keep accumulating for future research.
+FALLING_DRIVERS = {
+    "gold": ("fred_dfii10", "price_gold"),
+    "ust10y": ("fred_t10yie", "price_ust10y"),
+}
+
+
 def engines(conn: sqlite3.Connection, as_of: str,
             prev: dict | None = None) -> dict:
     """{market: {"engine": True/False/None, "alive": True/False/None}}.
     prev = {market: last week's engine answer} for hysteresis carry."""
     prev = prev or {}
     out = {m: {"engine": None, "alive": None} for m in MARKETS}
-    out["gold"] = gold_engine(conn, as_of)
+    for market, (driver, price) in FALLING_DRIVERS.items():
+        out[market] = falling_driver_engine(conn, driver, price, as_of)
+    # gold's CB dominant-flow leg KILLED (research R2 verdict, 2026-07-18):
+    # the IMF-reported flow was "strong" 2008-2014 (gold's bear) and OFF for
+    # nearly all of 2022-24 — the era's defining purchases were UNREPORTED,
+    # so free data cannot see the flow the §3.3 thesis is about. Replay:
+    # CONFIRMED weeks doubled at ~zero return. cb_flow_strong stays testable
+    # and cb_gold_flow keeps accumulating (see RESEARCH.md).
     out["wti"] = oil_engine(conn, as_of, prev_engine=prev.get("wti"))
+    # corn engine KILLED (research R1 verdict, 2026-07-18): both raw stocks
+    # AND the spec's stocks-to-use recipe graded strongly ANTI-predictive over
+    # 15 yrs (CONFIRMED ~-1%/wk vs NEUTRAL +0.3%/wk) — quarterly tightness is
+    # known only after the price has moved. corn honestly has no driver; the
+    # ratio series keeps accumulating for future research (see RESEARCH.md).
     return out
 
 
-def gold_engine(conn: sqlite3.Connection, as_of: str) -> dict:
-    """Engine ✓ = real yields FALLING (13-wk change < 0) AND driver alive.
-    Alive = sign(rho_52wk) == sign(rho_10yr historical) and |rho| >= 0.1."""
-    weekly = spine._weekly_last(spine._series_rows(conn, "fred_dfii10", as_of))
+def corn_engine(conn: sqlite3.Connection, as_of: str,
+                prev_engine: bool | None = None, exit_band: float = 0.02) -> dict:
+    """Engine ✓ = corn STOCKS-TO-USE ratio below its same-QUARTER average of
+    the prior 5 years (research R1 — the spec's real §3.2 recipe; the raw-
+    stocks proxy was anti-predictive, L-007). Two-trigger hysteresis as oil:
+    turns ✗ only above (1+band)× the seasonal average. Quarterly, keyed on
+    the reference month; needs ≥4 prior same-quarter ratios."""
+    rows = spine._series_rows(conn, "corn_stocks_use", as_of)
+    if not rows:
+        return {"engine": None, "alive": None}
+    latest_date, _, latest_value = rows[-1]
+    month = dt.date.fromisoformat(latest_date).month
+    priors = [v for d, _p, v in rows[:-1]
+              if dt.date.fromisoformat(d).month == month][-5:]
+    if len(priors) < 4:
+        return {"engine": None, "alive": None}
+    average = sum(priors) / len(priors)
+    if latest_value < average:
+        engine = True
+    elif latest_value > (1.0 + exit_band) * average:
+        engine = False
+    else:
+        engine = prev_engine if prev_engine is not None else False
+    return {"engine": engine, "alive": True}
+
+
+def cb_flow_strong(conn: sqlite3.Connection, as_of: str) -> bool | None:
+    """The dominant-flow leg (research R2, spec §3.3): True when the trailing
+    12-month sum of world CB net gold purchases (cb_gold_flow, tonnes) exceeds
+    the average of the trailing sums ending 1..5 years earlier (>= 4 required).
+    No hysteresis: 12-month sums over monthly data move too slowly to flicker.
+    None = not enough history to answer."""
+    values = [v for _d, _p, v in spine._series_rows(conn, "cb_gold_flow", as_of)]
+    n = len(values)
+    if n < 24:
+        return None
+    priors = [sum(values[n - 12 * k - 12:n - 12 * k])
+              for k in range(1, 6) if n - 12 * k >= 12]
+    if len(priors) < 4:
+        return None
+    return sum(values[-12:]) > sum(priors) / len(priors)
+
+
+def falling_driver_engine(conn: sqlite3.Connection, driver_sid: str,
+                          price_sid: str, as_of: str) -> dict:
+    """Engine ✓ = the driver is FALLING (13-wk weekly change < 0) AND the
+    driver is alive (sign of the 52-wk correlation of changes matches its
+    10-yr historical sign, |rho| >= 0.1). The generalized gold engine."""
+    weekly = spine._weekly_last(spine._series_rows(conn, driver_sid, as_of))
     values = [weekly[w] for w in sorted(weekly)]
     falling = values[-1] < values[-14] if len(values) >= 14 else None
 
-    rho_now = spine._weekly_corr(conn, "fred_dfii10", "price_gold", as_of,
-                                 window=52)
-    rho_hist = spine._weekly_corr(conn, "fred_dfii10", "price_gold", as_of,
-                                  window=520)
+    rho_now = spine._weekly_corr(conn, driver_sid, price_sid, as_of, window=52)
+    rho_hist = spine._weekly_corr(conn, driver_sid, price_sid, as_of, window=520)
     if rho_now is None or rho_hist is None:
         alive = None
     else:
@@ -63,16 +135,37 @@ def gold_engine(conn: sqlite3.Connection, as_of: str) -> dict:
     return {"engine": bool(falling and alive), "alive": alive}
 
 
+def gold_engine(conn: sqlite3.Connection, as_of: str) -> dict:
+    """Back-compat alias — gold is a falling-driver engine (real yields)."""
+    return falling_driver_engine(conn, "fred_dfii10", "price_gold", as_of)
+
+
+def oil_curve_backwardated(conn: sqlite3.Connection, as_of: str) -> bool | None:
+    """F9's second oil condition (research R3): the futures curve is
+    backwardated when the latest front-minus-4th-month spread is positive —
+    the market pays MORE for oil now than later, a shortage signal the
+    inventory count can miss. Plain > 0 per the spec's own wording (no
+    invented band — anti-astrology rule); None = no curve data at as_of."""
+    rows = spine._series_rows(conn, "oil_curve_spread", as_of)
+    if not rows:
+        return None
+    return rows[-1][2] > 0
+
+
 def oil_engine(conn: sqlite3.Connection, as_of: str,
                prev_engine: bool | None = None,
                exit_band: float = 0.02) -> dict:
     """Engine ✓ = commercial crude stocks below their same-calendar-week
-    average of the prior 5 years (tightness). Needs >= 4 of 5 prior years
-    within +/-10 days of the anniversary date. §5b two-trigger hysteresis
-    (rule decision 2026-07-18): turns ✓ below the average, turns ✗ only above
-    (1 + exit_band) x the average; in between the previous answer carries
-    (fresh market in the band -> ✗). Inventory drivers have no correlation-
-    alive concept in v1 -> alive mirrors data presence."""
+    average of the prior 5 years (tightness) OR the futures curve is
+    backwardated (F9 verbatim, research R3). Inventory leg needs >= 4 of 5
+    prior years within +/-10 days of the anniversary date and keeps its §5b
+    two-trigger hysteresis (rule decision 2026-07-18): turns ✓ below the
+    average, turns ✗ only above (1 + exit_band) x the average; in between the
+    previous answer carries (fresh market in the band -> ✗). Inventory
+    drivers have no correlation-alive concept in v1 -> alive mirrors data
+    presence."""
+    if oil_curve_backwardated(conn, as_of):
+        return {"engine": True, "alive": True}
     rows = spine._series_rows(conn, "oil_inventories", as_of)
     if not rows:
         return {"engine": None, "alive": None}

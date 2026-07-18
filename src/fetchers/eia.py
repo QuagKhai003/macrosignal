@@ -1,11 +1,17 @@
 """EIA fetcher — weekly petroleum series via the v2 seriesid API.
 
-@context  Oil's engine input (tech spec Part 1 row 8): WCESTUS1, US commercial
-          crude stocks, weekly. The v2 `seriesid` route keeps the old-style
-          series codes (config in signals.yaml `series_codes`).
-@done     fetch(): stores under the entry's own series_id (single-series
-          entries); data_date = week-ending period, pub_date = +pub_lag_days
-          (the following Wednesday's report); idempotent; loud failures.
+@context  Oil's engine inputs (tech spec Part 1 row 8 + F9): WCESTUS1 weekly
+          crude stocks, and the R3 futures-curve contracts RCLC1/RCLC4 (daily,
+          EIA stopped updating them 2024-04 — history feeds the replay; a live
+          continuation is only worth building if the curve leg survives).
+          The v2 `seriesid` route keeps the old-style series codes.
+@done     fetch(): a single-code entry stores under the entry's own series_id
+          (oil_inventories, unchanged); a multi-code entry stores per code
+          under eia_<code-tail> (the FRED pattern — eia_rclc1, eia_rclc4);
+          data_date = period, pub_date = +pub_lag_days; idempotent; loud
+          failures. Entries carrying `live_curve` delegate to src/fetchers/
+          oilcurve.fetch_continuation AFTER committing history (R3b — live
+          Yahoo contract months continue the frozen EIA curve).
 @todo     More EIA series (natural gas) only via new signals.yaml entries.
 @limits   Requires EIA_API_KEY unless a session is injected (tests). Raises
           FetchError — the orchestrator journals it.
@@ -18,7 +24,7 @@ import sqlite3
 import requests
 
 from src import config
-from src.fetchers import base
+from src.fetchers import base, oilcurve
 
 API_URL = "https://api.eia.gov/v2/seriesid/{code}"
 
@@ -27,7 +33,8 @@ class FetchError(RuntimeError):
     pass
 
 
-def fetch(entry: dict, conn: sqlite3.Connection, session=None) -> int:
+def fetch(entry: dict, conn: sqlite3.Connection, session=None,
+          live_session=None, today=None) -> int:
     if session is None:
         key = config.get_key("EIA_API_KEY")
         if not key:
@@ -36,12 +43,17 @@ def fetch(entry: dict, conn: sqlite3.Connection, session=None) -> int:
 
     lag = dt.timedelta(days=int(entry["pub_lag_days"]))
     added = 0
-    for code in entry["series_codes"]:
+    codes = entry["series_codes"]
+    for code in codes:
         rows = _rows(session, code, lag)
-        base.ensure_series_row(conn, entry["series_id"], entry,
-                               f"EIA {code}")
-        added += base.insert_observations(conn, entry["series_id"], rows)
-    conn.commit()
+        sid = entry["series_id"] if len(codes) == 1 \
+            else f"eia_{code.split('.')[1].lower()}"
+        base.ensure_series_row(conn, sid, entry, f"EIA {code}")
+        added += base.insert_observations(conn, sid, rows)
+    conn.commit()  # history is safe even if the live continuation fails loud
+    if entry.get("live_curve"):
+        added += oilcurve.fetch_continuation(entry, conn,
+                                             session=live_session, today=today)
     return added
 
 

@@ -132,6 +132,121 @@ signals:
          max_tokens: 2000}
     prompt_version: v1.0
 
+  - series_id: us_dollar
+    name: US broad dollar index, FRED DTWEXBGS (weather/EM penalty gauge, H2)
+    group: H
+    source: FRED
+    source_url: https://fred.stlouisfed.org/graph/fredgraph.csv?id=DTWEXBGS
+    schedule: daily
+    pub_lag_days: 1
+    history_start: 2006-01-02
+    window: rolling10y
+    series_codes: [DTWEXBGS]
+    causal_sentence: A strong and rising dollar strangles emerging markets and commodities because their debts and goods are priced in dollars, so it drains those trades before the crowd reacts.
+    elite_watcher: Every EM and commodity macro desk; the IMF's dollar-liquidity monitors
+
+  - series_id: inflation_expectations
+    name: 10-year breakeven inflation, FRED T10YIE (the bond engine's driver)
+    group: F
+    source: FRED
+    source_url: https://fred.stlouisfed.org/graph/fredgraph.csv?id=T10YIE
+    schedule: daily
+    pub_lag_days: 1
+    history_start: 2003-01-02
+    window: rolling10y
+    series_codes: [T10YIE]
+    causal_sentence: Bond prices rise when the inflation the market expects falls, because fixed coupons are worth more when money holds its value, so falling breakevens lift Treasuries.
+    elite_watcher: Bond desks and the Fed itself (breakevens are a stated policy input)
+
+  - series_id: us_ez_rate_diff
+    name: US minus Eurozone short-rate differential, FRED DGS2 - ECBDFR (the euro engine's driver)
+    group: H
+    source: FRED
+    source_url: https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS2
+    schedule: daily
+    pub_lag_days: 1
+    history_start: 2003-01-02
+    window: rolling10y
+    series_codes: [DGS2, ECBDFR]  # derived = DGS2 - ECBDFR (src/spine)
+    causal_sentence: A currency strengthens when its interest-rate advantage grows, so when the US-Eurozone rate gap narrows the euro gains as capital rotates back toward it.
+    elite_watcher: FX carry desks worldwide; the ECB and Fed both watch the differential
+
+  - series_id: corn_stocks
+    name: US corn grain stocks, USDA NASS quarterly (corn's engine)
+    group: D
+    source: NASS
+    source_url: https://quickstats.nass.usda.gov/api
+    schedule: quarterly
+    pub_lag_days: 50  # quarterly Grain Stocks report lands ~7 weeks after the reference date
+    history_start: 1975-01-01
+    window: same_quarter_5y_avg
+    causal_sentence: Corn stocks below their seasonal norm mean the crop is being consumed faster than expected, and tight grain tightens prices before the shortage is widely reported.
+    elite_watcher: Every agricultural trading desk (Cargill, ADM); the USDA Grain Stocks report is a scheduled market-mover
+    nass_query:  # NASS Quick Stats parameters (deterministic, editable config)
+      commodity_desc: CORN
+      statisticcat_desc: STOCKS
+      unit_desc: BU
+      agg_level_desc: NATIONAL
+      source_desc: SURVEY
+    # the USE side of stocks-to-use (research R1): annual production feeds the
+    # implied-disappearance calculation in src/spine.derive_corn_stocks_use
+    nass_production_query:
+      commodity_desc: CORN
+      statisticcat_desc: PRODUCTION
+      unit_desc: BU
+      agg_level_desc: NATIONAL
+      source_desc: SURVEY
+      reference_period_desc: YEAR
+
+  - series_id: ez_2y_yield
+    name: Euro-area AAA 2-year market yield, ECB yield curve daily (euro engine driver v2, research R4)
+    group: H
+    source: ECB
+    source_url: https://data-api.ecb.europa.eu/service/data/YC/B.U2.EUR.4F.G_N_A.SV_C_YM.SR_2Y
+    schedule: daily
+    pub_lag_days: 1
+    history_start: 2004-09-06
+    window: rolling10y
+    causal_sentence: A currency strengthens when its market interest rates rise against the other side's, and market rates move the moment traders smell a change while policy rates step months later.
+    elite_watcher: FX carry desks worldwide; the ECB publishes this curve as its own market-rate reference
+    # stored as ecb_yc2y; src/spine derives us_ez2y_diff = DGS2 - ecb_yc2y
+    # (both MARKET rates — the R4 swap; us_ez_rate_diff keeps accumulating)
+
+  - series_id: oil_curve
+    name: WTI futures curve, front vs 4th month, EIA daily (oil's F9 curve leg, research R3)
+    group: F
+    source: EIA
+    source_url: https://api.eia.gov/v2/seriesid/PET.RCLC1.D
+    schedule: daily
+    pub_lag_days: 1
+    history_start: 1985-01-02
+    window: fixed_threshold  # backwardated = front minus 4th month > 0 (F9 verbatim)
+    series_codes: [PET.RCLC1.D, PET.RCLC4.D]  # stored as eia_rclc1 / eia_rclc4; spread derived in src/spine
+    causal_sentence: When buyers pay more for oil delivered now than for oil delivered later, supply is short today, and that shortage lifts prices before inventory reports confirm it.
+    elite_watcher: Every physical oil trading desk (curve shape IS their P&L), Pierre Andurand
+    # EIA stopped updating these series 2024-04 (exchange-data licensing);
+    # history feeds the replay. R3b live continuation (leg KEPT 2026-07-18):
+    # Yahoo CME contract months -> yh_clc1/yh_clc4, one close per run, merged
+    # after the EIA span in src/spine. The 2024-04->2026-07 gap stays empty
+    # (expired Yahoo contracts are gone) — honest None in that window.
+    live_curve:
+      symbol_root: CL  # CL + delivery-month letter + 2-digit year + .NYM
+
+  - series_id: cb_gold
+    name: World central-bank gold holdings flow, IMF IRFCL monthly (gold's dominant-flow leg, research R2)
+    group: H
+    source: IMF
+    source_url: https://api.imf.org/external/sdmx/2.1/data/IMF.STA,IRFCL/.IRFCLDT1_IRFCL56V_FTO..M
+    schedule: monthly
+    pub_lag_days: 45  # template reporters trickle in ~2-6 weeks after month end; doubles as the maturity embargo (immature months are never stored)
+    history_start: 1999-12-31
+    window: ttm_vs_5y_avg
+    causal_sentence: Central banks buy gold for reserve policy at any price, so when their accumulation runs above its own trend that price-insensitive bid absorbs supply and lifts gold regardless of yields.
+    elite_watcher: World Gold Council research (monthly CB statistics team), every bullion-bank strategist
+    # stored series = cb_gold_flow, tonnes/month: sum of per-country month-over-
+    # month changes (combined sector S1XS1311, adjacent months only — panel
+    # entries like China 2015-M06 contribute nothing). See src/fetchers/imf.py.
+
   - series_id: whale_berkshire
     name: Berkshire Hathaway cash position from 10-Q/10-K filings (the whale ledger)
     group: B

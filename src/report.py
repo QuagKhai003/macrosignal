@@ -32,12 +32,15 @@ MARKET_NAME = {"gold": "Gold", "wti": "Oil (WTI)", "ust10y": "US 10-yr note",
 
 def build(results: dict, prev_states: dict, week: str, weather: str = "YELLOW",
           summary: dict | None = None, full: bool = False,
-          whale: dict | None = None, divergence: bool = False) -> str:
+          whale: dict | None = None, divergence: bool = False,
+          alarm_banner: str | None = None) -> str:
     lines = [f"Week {week}", f"Weather: {WEATHER_PHRASE[weather]}"]
     if divergence:
         lines.append("Divergence: the pros have no spare cash while the"
                      " biggest whale is hoarding it — the contrast is the"
                      " signal.")
+    if alarm_banner:
+        lines.append(f"Self-check: {alarm_banner}")
     lines.append("")
     changes = {m: r for m, r in results.items()
                if r["state"] != prev_states.get(m, "NEUTRAL")}

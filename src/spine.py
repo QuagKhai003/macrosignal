@@ -88,6 +88,126 @@ def derive_market_valuation(conn: sqlite3.Connection, as_of: str) -> int:
     return added
 
 
+def derive_rate_differential(conn: sqlite3.Connection, as_of: str) -> int:
+    """The euro engine's driver: US 2-yr yield minus the ECB deposit rate
+    (DGS2 - ECBDFR), one row per DGS2 date, ECBDFR = latest published at or
+    before that date. Stored as the derived us_ez_rate_diff series."""
+    us = _series_rows(conn, "fred_dgs2", as_of)
+    ez = _series_rows(conn, "fred_ecbdfr", as_of)
+    if not us or not ez:
+        return 0
+    ez_dates = [r[0] for r in ez]
+    added = 0
+    for data_date, pub, value in us:
+        i = bisect_right(ez_dates, data_date) - 1
+        if i < 0:
+            continue
+        diff = value - ez[i][2]
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO observations VALUES"
+            " ('us_ez_rate_diff', ?, ?, ?)",
+            (data_date, max(pub, ez[i][1]), diff))
+        added += cur.rowcount
+    conn.commit()
+    return added
+
+
+def derive_corn_stocks_use(conn: sqlite3.Connection, as_of: str) -> int:
+    """Corn's REAL driver (research R1, spec §3.2): stocks-to-use ratio.
+    Implied use over the trailing year = stocks_{t-4q} + production credited
+    between then and now − stocks_t (trade ignored — a stable small term).
+    Production is credited at its harvest-year Dec 1 data_date. Ratio =
+    stocks_t ÷ implied use; stored as corn_stocks_use (quarterly)."""
+    stocks = _series_rows(conn, "corn_stocks", as_of)
+    production = _series_rows(conn, "corn_production", as_of)
+    if len(stocks) < 5 or not production:
+        return 0
+    conn.execute(  # derived series: own its parent row (FK) — no registry entry
+        "INSERT OR IGNORE INTO series VALUES ('corn_stocks_use', 'derived',"
+        " '', 'quarterly', 'same_quarter_5y_avg',"
+        " 'stocks divided by implied trailing-year use')")
+    prod_dates = [r[0] for r in production]
+    added = 0
+    for i in range(4, len(stocks)):
+        d_now, pub_now, s_now = stocks[i]
+        d_prev, pub_prev, s_prev = stocks[i - 4]
+        # production credited in the window (d_prev, d_now]
+        lo = bisect_right(prod_dates, d_prev)
+        hi = bisect_right(prod_dates, d_now)
+        prod_in_window = sum(production[j][2] for j in range(lo, hi))
+        prod_pubs = [production[j][1] for j in range(lo, hi)]
+        use = s_prev + prod_in_window - s_now
+        if use <= 0:
+            continue  # nonsense window (data gap); skip honestly
+        ratio = s_now / use
+        pub = max([pub_now, pub_prev] + prod_pubs)
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO observations VALUES"
+            " ('corn_stocks_use', ?, ?, ?)", (d_now, pub, ratio))
+        added += cur.rowcount
+    conn.commit()
+    return added
+
+
+def derive_market_rate_differential(conn: sqlite3.Connection,
+                                    as_of: str) -> int:
+    """The euro engine's R4 driver: US minus euro-area MARKET 2y rates
+    (DGS2 − ecb_yc2y — both prices, no policy rate). One row per DGS2 date,
+    euro leg = latest published value at or before that date (different
+    holiday calendars). Stored as the derived us_ez2y_diff series."""
+    us = _series_rows(conn, "fred_dgs2", as_of)
+    ez = _series_rows(conn, "ecb_yc2y", as_of)
+    if not us or not ez:
+        return 0
+    conn.execute(  # derived series: own its parent row (FK) — no registry entry
+        "INSERT OR IGNORE INTO series VALUES ('us_ez2y_diff', 'derived',"
+        " '', 'daily', 'rolling10y',"
+        " 'US 2y minus euro-area AAA 2y, both market rates')")
+    ez_dates = [r[0] for r in ez]
+    added = 0
+    for data_date, pub, value in us:
+        i = bisect_right(ez_dates, data_date) - 1
+        if i < 0:
+            continue
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO observations VALUES"
+            " ('us_ez2y_diff', ?, ?, ?)",
+            (data_date, max(pub, ez[i][1]), value - ez[i][2]))
+        added += cur.rowcount
+    conn.commit()
+    return added
+
+
+def derive_oil_curve_spread(conn: sqlite3.Connection, as_of: str) -> int:
+    """Oil's F9 curve leg (research R3): front-month minus 4th-month WTI
+    futures, same trading day only. Positive spread = backwardation (today's
+    oil dearer than later oil = shortage signal). Sources merged per leg
+    (R3b): EIA settlements (RCLC1/RCLC4, authoritative, frozen 2024-04) plus
+    the Yahoo live continuation (yh_clc1/yh_clc4) strictly AFTER the EIA
+    span. Stored as the derived oil_curve_spread series ($/bbl, daily)."""
+    front = _with_continuation(conn, "eia_rclc1", "yh_clc1", as_of)
+    fourth = _with_continuation(conn, "eia_rclc4", "yh_clc4", as_of)
+    if not front or not fourth:
+        return 0
+    conn.execute(  # derived series: own its parent row (FK) — no registry entry
+        "INSERT OR IGNORE INTO series VALUES ('oil_curve_spread', 'derived',"
+        " '', 'daily', 'fixed_threshold',"
+        " 'WTI front-month minus 4th-month futures; positive = backwardation')")
+    fourth_by_date = {d: (pub, v) for d, pub, v in fourth}
+    added = 0
+    for data_date, pub, value in front:
+        match = fourth_by_date.get(data_date)
+        if match is None:
+            continue
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO observations VALUES"
+            " ('oil_curve_spread', ?, ?, ?)",
+            (data_date, max(pub, match[0]), value - match[1]))
+        added += cur.rowcount
+    conn.commit()
+    return added
+
+
 def summarize(conn: sqlite3.Connection, as_of: str) -> dict:
     """The Phase 1 readouts, one dict — every value traceable to a formula."""
     out = {}
@@ -107,12 +227,24 @@ def summarize(conn: sqlite3.Connection, as_of: str) -> dict:
     out["credit_spread_pct"] = formulas.pct_rank(
         _values(conn, "fred_baa10y", as_of),
         WINDOW_OBS[("rolling10y", "daily")])
+    out["us_dollar_pct"] = formulas.pct_rank(
+        _values(conn, "fred_dtwexbgs", as_of),
+        WINDOW_OBS[("rolling10y", "daily")])
     for sid in ("price_gold", "price_wti", "price_ust10y", "price_eur",
                 "price_corn"):
         out[f"{sid}_momentum"] = formulas.sma200_flag(_values(conn, sid, as_of))
     out["gold_realyield_corr_52w"] = _weekly_corr(
         conn, "fred_dfii10", "price_gold", as_of)
     return out
+
+
+def _with_continuation(conn, primary_sid, live_sid, as_of):
+    """Primary rows plus live-continuation rows strictly after the primary's
+    last data date — the frozen source stays authoritative for its span."""
+    primary = _series_rows(conn, primary_sid, as_of)
+    live = _series_rows(conn, live_sid, as_of)
+    cutoff = primary[-1][0] if primary else ""
+    return primary + [r for r in live if r[0] > cutoff]
 
 
 def _series_rows(conn, sid, as_of):

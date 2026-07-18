@@ -17,11 +17,13 @@
 
 import datetime as dt
 
-from src import classifier, db, registry, report, spine, states, weather
-from src.fetchers import cot, edgar, eia, fred, gdelt, prices
+from src import (alarms, classifier, db, registry, report, spine, states,
+                 weather)
+from src.fetchers import cot, ecb, edgar, eia, fred, gdelt, imf, nass, prices
 
 FETCHERS = {"FRED": fred.fetch, "CFTC": cot.fetch, "Yahoo": prices.fetch,
-            "EIA": eia.fetch, "EDGAR": edgar.fetch, "GDELT": gdelt.fetch}
+            "EIA": eia.fetch, "EDGAR": edgar.fetch, "GDELT": gdelt.fetch,
+            "NASS": nass.fetch, "IMF": imf.fetch, "ECB": ecb.fetch}
 
 
 def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
@@ -69,6 +71,10 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
 
         added += spine.derive_net_liquidity(conn, as_of)
         added += spine.derive_market_valuation(conn, as_of)
+        added += spine.derive_rate_differential(conn, as_of)
+        added += spine.derive_corn_stocks_use(conn, as_of)
+        added += spine.derive_market_rate_differential(conn, as_of)
+        added += spine.derive_oil_curve_spread(conn, as_of)
         summary = spine.summarize(conn, as_of)
         week = states.iso_week(today)
         light = weather.light(conn, as_of)
@@ -83,6 +89,8 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
             light["gauges"]["manager_cash"]["red"] is True and whale_panel
             and whale_panel["fraction"] is not None
             and whale_panel["fraction"] > 0.5)
+        budget = alarms.alarm_budget(conn, today)
+        summary["alarms_rolling_year"] = budget["events"]
         conn.execute(
             "INSERT INTO journal (date, market_id, event_type, detail,"
             " price_at_event) VALUES (?, NULL, 'run', ?, NULL)",
@@ -94,7 +102,8 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
 
     print(report.build(market_states, prev_states, week,
                        weather=light["light"], summary=summary,
-                       full=full, whale=whale_panel, divergence=divergence))
+                       full=full, whale=whale_panel, divergence=divergence,
+                       alarm_banner=budget["banner"]))
     print("run complete")
     return 0
 

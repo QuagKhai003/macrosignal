@@ -36,7 +36,8 @@ ALLOWED_SCHEDULES = {"daily", "weekly", "monthly", "quarterly"}
 # free text; THIS set is the semantic gate (decision 2026-07-18).
 ALLOWED_WINDOWS = {
     "rolling3y", "rolling10y", "rolling20y", "sma200",
-    "same_week_5y_avg", "fixed_threshold",
+    "same_week_5y_avg", "same_quarter_5y_avg", "fixed_threshold",
+    "ttm_vs_5y_avg",  # trailing-12m sum vs the prior 5 years' sums (research R2)
 }
 MIN_HISTORY_YEARS = 10  # admission question 3 (percentile-windowed signals)
 # Question 3's stated rationale is "no history -> no percentile ->
