@@ -4,7 +4,8 @@
           mirror), observations (every raw number ever fetched, append-only),
           states (weekly state machine output), journal (the honesty ledger),
           headlines (every ingested headline + its audit-logged label —
-          Phase 4, the one caged LLM surface).
+          Phase 4, the one caged LLM surface), insider_buys (Form-4
+          open-market purchases in the F13 theme universe — semis batch).
 @done     Idempotent schema creation; connect(); both data_date AND pub_date
           on observations (as-of discipline, tech spec Part 1).
 @todo     Phase 1: insert helpers for fetchers (INSERT OR IGNORE on
@@ -58,6 +59,15 @@ CREATE TABLE IF NOT EXISTS headlines (
     model          TEXT,           -- stamped at classification time
     prompt_version TEXT,
     UNIQUE (theme, title, seen_date)
+);
+
+CREATE TABLE IF NOT EXISTS insider_buys (
+    ticker      TEXT NOT NULL,  -- issuer, from the F13 universe config
+    buyer       TEXT NOT NULL,  -- reporting owner name as filed
+    trans_date  TEXT NOT NULL,  -- ISO transaction date
+    filing_date TEXT NOT NULL,  -- ISO EDGAR filing date (true as-of)
+    accession   TEXT NOT NULL,  -- source Form 4 accession number
+    PRIMARY KEY (accession, buyer, trans_date)
 );
 
 CREATE TABLE IF NOT EXISTS journal (

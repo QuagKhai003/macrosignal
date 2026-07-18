@@ -34,7 +34,8 @@ MARKET_NAME = {"gold": "Gold", "wti": "Oil (WTI)", "ust10y": "US 10-yr note",
 def build(results: dict, prev_states: dict, week: str, weather: str = "YELLOW",
           summary: dict | None = None, full: bool = False,
           whale: dict | None = None, divergence: bool = False,
-          alarm_banner: str | None = None) -> str:
+          alarm_banner: str | None = None,
+          insider_flags: dict | None = None) -> str:
     lines = [f"Week {week}", f"Weather: {WEATHER_PHRASE[weather]}"]
     if divergence:
         lines.append("Divergence: the pros have no spare cash while the"
@@ -60,6 +61,10 @@ def build(results: dict, prev_states: dict, week: str, weather: str = "YELLOW",
         if r.get("scared_and_abandoned"):
             lines.append(f"{MARKET_NAME[market]}: Scary headlines, empty"
                          f" trade — early type.")
+    flagged = sorted(t for t, on in (insider_flags or {}).items() if on)
+    if flagged:
+        lines.append(f"Insider cluster (F13): 3+ executives bought their own"
+                     f" stock within 90 days at: {', '.join(flagged)}.")
     if full and whale:
         frac = "?" if whale["fraction"] is None else f"{whale['fraction']:.0%}"
         was = ("" if whale["prior_fraction"] is None

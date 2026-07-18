@@ -17,8 +17,8 @@
 
 import datetime as dt
 
-from src import (alarms, classifier, db, registry, report, spine, states,
-                 weather)
+from src import (alarms, classifier, db, insiders, registry, report, spine,
+                 states, weather)
 from src.fetchers import cot, ecb, edgar, eia, fred, gdelt, imf, nass, prices
 
 FETCHERS = {"FRED": fred.fetch, "CFTC": cot.fetch, "Yahoo": prices.fetch,
@@ -91,6 +91,7 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
             and whale_panel["fraction"] > 0.5)
         budget = alarms.alarm_budget(conn, today)
         summary["alarms_rolling_year"] = budget["events"]
+        insider_flags = insiders.current_flags(conn, as_of)
         conn.execute(
             "INSERT INTO journal (date, market_id, event_type, detail,"
             " price_at_event) VALUES (?, NULL, 'run', ?, NULL)",
@@ -103,7 +104,8 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
     print(report.build(market_states, prev_states, week,
                        weather=light["light"], summary=summary,
                        full=full, whale=whale_panel, divergence=divergence,
-                       alarm_banner=budget["banner"]))
+                       alarm_banner=budget["banner"],
+                       insider_flags=insider_flags))
     print("run complete")
     return 0
 
