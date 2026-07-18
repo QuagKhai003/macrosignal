@@ -19,11 +19,11 @@ import datetime as dt
 
 from src import (alarms, classifier, db, registry, report, spine, states,
                  weather)
-from src.fetchers import cot, edgar, eia, fred, gdelt, nass, prices
+from src.fetchers import cot, edgar, eia, fred, gdelt, imf, nass, prices
 
 FETCHERS = {"FRED": fred.fetch, "CFTC": cot.fetch, "Yahoo": prices.fetch,
             "EIA": eia.fetch, "EDGAR": edgar.fetch, "GDELT": gdelt.fetch,
-            "NASS": nass.fetch}
+            "NASS": nass.fetch, "IMF": imf.fetch}
 
 
 def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,

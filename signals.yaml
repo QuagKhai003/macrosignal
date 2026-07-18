@@ -198,6 +198,21 @@ signals:
       source_desc: SURVEY
       reference_period_desc: YEAR
 
+  - series_id: cb_gold
+    name: World central-bank gold holdings flow, IMF IRFCL monthly (gold's dominant-flow leg, research R2)
+    group: H
+    source: IMF
+    source_url: https://api.imf.org/external/sdmx/2.1/data/IMF.STA,IRFCL/.IRFCLDT1_IRFCL56V_FTO..M
+    schedule: monthly
+    pub_lag_days: 45  # template reporters trickle in ~2-6 weeks after month end; doubles as the maturity embargo (immature months are never stored)
+    history_start: 1999-12-31
+    window: ttm_vs_5y_avg
+    causal_sentence: Central banks buy gold for reserve policy at any price, so when their accumulation runs above its own trend that price-insensitive bid absorbs supply and lifts gold regardless of yields.
+    elite_watcher: World Gold Council research (monthly CB statistics team), every bullion-bank strategist
+    # stored series = cb_gold_flow, tonnes/month: sum of per-country month-over-
+    # month changes (combined sector S1XS1311, adjacent months only — panel
+    # entries like China 2015-M06 contribute nothing). See src/fetchers/imf.py.
+
   - series_id: whale_berkshire
     name: Berkshire Hathaway cash position from 10-Q/10-K filings (the whale ledger)
     group: B

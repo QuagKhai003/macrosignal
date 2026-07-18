@@ -8,6 +8,7 @@
           alive (52-wk rolling corr sign matches the 10-yr historical sign,
           |rho| >= 0.1). oil: commercial crude stocks below the same-calendar-
           week 5-yr average (>= 4 of 5 prior years present). MARKETS registry.
+          cb_flow_strong exists but is DISCONNECTED (R2 kill verdict).
 @todo     Phase 2.2 consumes alive-streaks for the 26-week dead rule; more
           plugins as markets are admitted (Phase 6 expansion).
 @limits   Read-only on the db; as-of filtered (pub_date <= as_of). None means
@@ -50,6 +51,12 @@ def engines(conn: sqlite3.Connection, as_of: str,
     out = {m: {"engine": None, "alive": None} for m in MARKETS}
     for market, (driver, price) in FALLING_DRIVERS.items():
         out[market] = falling_driver_engine(conn, driver, price, as_of)
+    # gold's CB dominant-flow leg KILLED (research R2 verdict, 2026-07-18):
+    # the IMF-reported flow was "strong" 2008-2014 (gold's bear) and OFF for
+    # nearly all of 2022-24 — the era's defining purchases were UNREPORTED,
+    # so free data cannot see the flow the §3.3 thesis is about. Replay:
+    # CONFIRMED weeks doubled at ~zero return. cb_flow_strong stays testable
+    # and cb_gold_flow keeps accumulating (see RESEARCH.md).
     out["wti"] = oil_engine(conn, as_of, prev_engine=prev.get("wti"))
     # corn engine KILLED (research R1 verdict, 2026-07-18): both raw stocks
     # AND the spec's stocks-to-use recipe graded strongly ANTI-predictive over
@@ -83,6 +90,23 @@ def corn_engine(conn: sqlite3.Connection, as_of: str,
     else:
         engine = prev_engine if prev_engine is not None else False
     return {"engine": engine, "alive": True}
+
+
+def cb_flow_strong(conn: sqlite3.Connection, as_of: str) -> bool | None:
+    """The dominant-flow leg (research R2, spec §3.3): True when the trailing
+    12-month sum of world CB net gold purchases (cb_gold_flow, tonnes) exceeds
+    the average of the trailing sums ending 1..5 years earlier (>= 4 required).
+    No hysteresis: 12-month sums over monthly data move too slowly to flicker.
+    None = not enough history to answer."""
+    values = [v for _d, _p, v in spine._series_rows(conn, "cb_gold_flow", as_of)]
+    n = len(values)
+    if n < 24:
+        return None
+    priors = [sum(values[n - 12 * k - 12:n - 12 * k])
+              for k in range(1, 6) if n - 12 * k >= 12]
+    if len(priors) < 4:
+        return None
+    return sum(values[-12:]) > sum(priors) / len(priors)
 
 
 def falling_driver_engine(conn: sqlite3.Connection, driver_sid: str,
