@@ -41,6 +41,10 @@ signals:
       cot_ust10y: {code: "043602", report: tff}
       cot_eur: {code: "099741", report: tff}
       cot_corn: {code: "002602", report: disagg}
+      # expansion batch 1 (user-approved 2026-07-19)
+      cot_silver: {code: "084691", report: disagg}
+      cot_copper: {code: "085692", report: disagg}
+      cot_natgas: {code: "023651", report: disagg}
     causal_sentence: Trend-chasing speculators are right mid-trend and wrong at turns, so their positioning extremes mark old crowded trends and their abandonment marks early zones.
     elite_watcher: Managed-futures desks (Man AHL, AQR), veteran COT analysts (Larry Williams)
 
@@ -60,6 +64,10 @@ signals:
       price_eur: EURUSD=X
       price_corn: ZC=F
       price_wilshire: ^W5000  # weather gauge 2 numerator (FRED dropped WILL5000PR)
+      # expansion batch 1 (user-approved 2026-07-19)
+      price_silver: SI=F
+      price_copper: HG=F
+      price_natgas: NG=F
     causal_sentence: Investors underreact to news and then herd, so a price above its own 200-day average tends to keep drifting the same way.
     elite_watcher: Trend-following funds (AQR, Man AHL, Winton) running the century-validated strategy
 
@@ -117,6 +125,12 @@ signals:
       ust10y: '"treasury yields" OR "bond market selloff" OR "10-year yield"'
       eur: '"euro exchange rate" OR "euro dollar" OR "ECB rate"'
       corn: '"corn price" OR "corn crop" OR "grain prices"'
+      # expansion batch 1 + the semis equity theme (user picks 2026-07-19).
+      # semis accumulates news NOW; its full equity machinery is a later batch.
+      silver: '"silver price" OR "silver market" OR "silver rally"'
+      copper: '"copper price" OR "copper market" OR "copper demand"'
+      natgas: '"natural gas price" OR "natural gas market" OR "gas storage"'
+      semis: '"semiconductor stocks" OR "chip stocks" OR "chip demand"'
     # the caged LLM (decision 2026-07-18: NIM primary, OpenRouter fallback).
     # Tried in order; a provider without its key is skipped; mid-run failure
     # fails over to the next (each label's audit row stamps provider:model).
@@ -247,6 +261,19 @@ signals:
     # month changes (combined sector S1XS1311, adjacent months only — panel
     # entries like China 2015-M06 contribute nothing). See src/fetchers/imf.py.
 
+  - series_id: natgas_storage
+    name: US working natural gas in underground storage, EIA weekly (natgas engine)
+    group: D
+    source: EIA
+    source_url: https://api.eia.gov/v2/seriesid/NG.NW2_EPG0_SWO_R48_BCF.W
+    schedule: weekly
+    pub_lag_days: 6  # week ends Friday, report lands the following Thursday
+    history_start: 1993-12-31
+    window: same_week_5y_avg
+    series_codes: [NG.NW2_EPG0_SWO_R48_BCF.W]
+    causal_sentence: Gas in storage below its seasonal norm means heating and power demand are outrunning supply, which lifts prices before the shortage makes headlines.
+    elite_watcher: Every natural-gas trading desk (the Thursday EIA storage report is the market's scheduled mover)
+
   - series_id: whale_berkshire
     name: Berkshire Hathaway cash position from 10-Q/10-K filings (the whale ledger)
     group: B
@@ -262,8 +289,10 @@ signals:
     # XBRL fact names summed for "cash" (per-segment contexts dedupe by context id)
     cash_tags: ["us-gaap:CashAndCashEquivalentsAtCarryingValue", "brka:USTreasuryBills"]
     equity_tags: ["us-gaap:EquitySecuritiesFvNi"]
-    # F13 insider-cluster universe: EMPTY until the equity themes are chosen
-    insider_tickers: []
+    # F13 insider-cluster universe — SEMICONDUCTORS (user pick 2026-07-19).
+    # Universe config lands now; the Form-4 fetch layer is its own batch
+    # (src/insiders.py @todo) — nothing is faked meanwhile.
+    insider_tickers: [NVDA, AMD, AVGO, MU, INTC, TXN, QCOM, AMAT, LRCX, KLAC]
 
   - series_id: manager_cash
     name: BofA Global Fund Manager Survey headline cash level, percent (weather gauge 1)

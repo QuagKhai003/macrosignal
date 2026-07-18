@@ -76,7 +76,7 @@ def test_run_week_persists_all_markets(conn):
     results = states.run_week(conn, AS_OF_1)
     assert set(results) == set(states.drivers.MARKETS)
     rows = conn.execute("SELECT COUNT(*) FROM states").fetchone()[0]
-    assert rows == 5
+    assert rows == 8  # expansion batch 1: 5 spine + silver/copper/natgas
     # gold: engine None (no dfii10 data) -> NEUTRAL, honest
     assert results["gold"]["state"] == "NEUTRAL"
     assert results["gold"]["party_pct"] is not None
@@ -86,7 +86,7 @@ def test_rerun_same_week_is_idempotent(conn):
     seed_gold(conn)
     states.run_week(conn, AS_OF_1)
     states.run_week(conn, AS_OF_1)
-    assert conn.execute("SELECT COUNT(*) FROM states").fetchone()[0] == 5
+    assert conn.execute("SELECT COUNT(*) FROM states").fetchone()[0] == 8
     journal = conn.execute("SELECT COUNT(*) FROM journal"
                            " WHERE event_type = 'state_change'").fetchone()[0]
     assert journal == 0  # NEUTRAL everywhere: no changes to journal

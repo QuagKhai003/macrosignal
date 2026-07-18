@@ -8,8 +8,10 @@
           alive (52-wk rolling corr sign matches the 10-yr historical sign,
           |rho| >= 0.1). oil: commercial crude stocks below the same-calendar-
           week 5-yr average (>= 4 of 5 prior years present) OR curve
-          backwardated (R3). MARKETS registry. cb_flow_strong DISCONNECTED
-          (R2 kill); eur PARKED driverless (R4 kill — both rate gaps failed).
+          backwardated (R3). Expansion batch 1: silver = gold's driver on its
+          own price; natgas = the shared seasonal_storage_engine on EIA
+          storage; copper honestly driverless. MARKETS registry.
+          cb_flow_strong DISCONNECTED (R2 kill); eur PARKED (R4 kill).
 @todo     Phase 2.2 consumes alive-streaks for the 26-week dead rule; more
           plugins as markets are admitted (Phase 6 expansion).
 @limits   Read-only on the db; as-of filtered (pub_date <= as_of). None means
@@ -30,6 +32,12 @@ MARKETS = {
     "ust10y": {"cot": "cot_ust10y", "price": "price_ust10y"},
     "eur": {"cot": "cot_eur", "price": "price_eur"},
     "corn": {"cot": "cot_corn", "price": "price_corn"},
+    # expansion batch 1 (user-approved 2026-07-19): silver shares gold's
+    # spec-listed real-yields driver (§3.2, F3-alive-checked); natgas gets
+    # the oil-pattern storage engine; copper is honestly driverless for now.
+    "silver": {"cot": "cot_silver", "price": "price_silver"},
+    "copper": {"cot": "cot_copper", "price": "price_copper"},
+    "natgas": {"cot": "cot_natgas", "price": "price_natgas"},
 }
 
 
@@ -45,6 +53,7 @@ MARKETS = {
 FALLING_DRIVERS = {
     "gold": ("fred_dfii10", "price_gold"),
     "ust10y": ("fred_t10yie", "price_ust10y"),
+    "silver": ("fred_dfii10", "price_silver"),
 }
 
 
@@ -63,6 +72,7 @@ def engines(conn: sqlite3.Connection, as_of: str,
     # CONFIRMED weeks doubled at ~zero return. cb_flow_strong stays testable
     # and cb_gold_flow keeps accumulating (see RESEARCH.md).
     out["wti"] = oil_engine(conn, as_of, prev_engine=prev.get("wti"))
+    out["natgas"] = natgas_engine(conn, as_of, prev_engine=prev.get("natgas"))
     # corn engine KILLED (research R1 verdict, 2026-07-18): both raw stocks
     # AND the spec's stocks-to-use recipe graded strongly ANTI-predictive over
     # 15 yrs (CONFIRMED ~-1%/wk vs NEUTRAL +0.3%/wk) — quarterly tightness is
@@ -166,7 +176,29 @@ def oil_engine(conn: sqlite3.Connection, as_of: str,
     presence."""
     if oil_curve_backwardated(conn, as_of):
         return {"engine": True, "alive": True}
-    rows = spine._series_rows(conn, "oil_inventories", as_of)
+    return seasonal_storage_engine(conn, "oil_inventories", as_of,
+                                   prev_engine, exit_band)
+
+
+def natgas_engine(conn: sqlite3.Connection, as_of: str,
+                  prev_engine: bool | None = None,
+                  exit_band: float = 0.02) -> dict:
+    """Engine ✓ = working gas in storage below its same-calendar-week 5-yr
+    average — the oil inventory pattern verbatim on the EIA weekly storage
+    report (expansion batch 1). Same §5b hysteresis."""
+    return seasonal_storage_engine(conn, "natgas_storage", as_of,
+                                   prev_engine, exit_band)
+
+
+def seasonal_storage_engine(conn: sqlite3.Connection, sid: str, as_of: str,
+                            prev_engine: bool | None = None,
+                            exit_band: float = 0.02) -> dict:
+    """Shared inventory-tightness engine: latest level below the same-
+    calendar-week average of the prior 5 years (>= 4 of 5 within +/-10 days
+    of the anniversary). Two-trigger hysteresis: ✓ below the average, ✗ only
+    above (1 + exit_band) x it, previous answer carries in between. Storage
+    drivers have no correlation-alive concept in v1 -> alive mirrors data."""
+    rows = spine._series_rows(conn, sid, as_of)
     if not rows:
         return {"engine": None, "alive": None}
     latest_date, _, latest_value = rows[-1]

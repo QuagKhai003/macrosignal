@@ -136,6 +136,34 @@ def test_oil_engine_turns_off_above_band(conn):
 
 def test_engines_shape(conn):
     result = drivers.engines(conn, AS_OF)
-    assert set(result) == {"gold", "wti", "ust10y", "eur", "corn"}
+    assert set(result) == {"gold", "wti", "ust10y", "eur", "corn",
+                           "silver", "copper", "natgas"}
     assert result["eur"] == {"engine": None, "alive": None}
     assert result["corn"] == {"engine": None, "alive": None}
+    assert result["copper"] == {"engine": None, "alive": None}  # driverless
+
+
+def test_natgas_engine_seasonal(conn):
+    conn.execute("INSERT INTO series VALUES ('natgas_storage', 's', 'u',"
+                 " 'weekly', 'same_week_5y_avg', '')")
+    n = 6 * 52
+    put_weekly(conn, "natgas_storage", [3000.0] * (n - 1) + [2500.0])
+    assert drivers.natgas_engine(conn, AS_OF) == {"engine": True,
+                                                  "alive": True}
+    conn.execute("DELETE FROM observations WHERE series_id ="
+                 " 'natgas_storage'")
+    put_weekly(conn, "natgas_storage", [3000.0] * (n - 1) + [3500.0])
+    assert drivers.natgas_engine(conn, AS_OF) == {"engine": False,
+                                                  "alive": True}
+
+
+def test_silver_shares_gold_driver(conn):
+    conn.execute("INSERT INTO series VALUES ('price_silver', 's', 'u',"
+                 " 'weekly', 'sma200', '')")
+    n = 560
+    yields_falling = wiggle(5.0, n, big=-1.0, small=0.5)
+    silver = [90.0 - y for y in yields_falling]  # moves opposite yields
+    put_weekly(conn, "fred_dfii10", yields_falling)
+    put_weekly(conn, "price_silver", silver)
+    assert drivers.engines(conn, AS_OF)["silver"] == {"engine": True,
+                                                      "alive": True}
