@@ -88,6 +88,30 @@ def derive_market_valuation(conn: sqlite3.Connection, as_of: str) -> int:
     return added
 
 
+def derive_rate_differential(conn: sqlite3.Connection, as_of: str) -> int:
+    """The euro engine's driver: US 2-yr yield minus the ECB deposit rate
+    (DGS2 - ECBDFR), one row per DGS2 date, ECBDFR = latest published at or
+    before that date. Stored as the derived us_ez_rate_diff series."""
+    us = _series_rows(conn, "fred_dgs2", as_of)
+    ez = _series_rows(conn, "fred_ecbdfr", as_of)
+    if not us or not ez:
+        return 0
+    ez_dates = [r[0] for r in ez]
+    added = 0
+    for data_date, pub, value in us:
+        i = bisect_right(ez_dates, data_date) - 1
+        if i < 0:
+            continue
+        diff = value - ez[i][2]
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO observations VALUES"
+            " ('us_ez_rate_diff', ?, ?, ?)",
+            (data_date, max(pub, ez[i][1]), diff))
+        added += cur.rowcount
+    conn.commit()
+    return added
+
+
 def summarize(conn: sqlite3.Connection, as_of: str) -> dict:
     """The Phase 1 readouts, one dict — every value traceable to a formula."""
     out = {}
@@ -106,6 +130,9 @@ def summarize(conn: sqlite3.Connection, as_of: str) -> dict:
     # gauge series = BAA10Y (L-001 fix: full history; HY OAS still capped)
     out["credit_spread_pct"] = formulas.pct_rank(
         _values(conn, "fred_baa10y", as_of),
+        WINDOW_OBS[("rolling10y", "daily")])
+    out["us_dollar_pct"] = formulas.pct_rank(
+        _values(conn, "fred_dtwexbgs", as_of),
         WINDOW_OBS[("rolling10y", "daily")])
     for sid in ("price_gold", "price_wti", "price_ust10y", "price_eur",
                 "price_corn"):

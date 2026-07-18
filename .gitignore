@@ -24,3 +24,6 @@ coverage/
 
 # ── local data (rebuildable from sources) ──
 signals.db
+signals.db-journal
+signals.db-wal
+signals.db-shm

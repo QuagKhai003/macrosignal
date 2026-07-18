@@ -64,11 +64,11 @@ def test_all_sources_down_still_completes(tmp_path, capsys):
     conn = db.connect(db_path)
     flags = conn.execute("SELECT COUNT(*) FROM journal"
                          " WHERE event_type = 'flag'").fetchone()[0]
-    assert flags == 9  # 4 FRED + CFTC + Yahoo + EIA + EDGAR + GDELT down
+    assert flags == 12  # 7 FRED + CFTC + Yahoo + EIA + EDGAR + GDELT down
     run_detail = conn.execute("SELECT detail FROM journal"
                               " WHERE event_type = 'run'").fetchone()[0]
-    assert "9 fetch failures" in run_detail
-    assert conn.execute("SELECT COUNT(*) FROM series").fetchone()[0] == 10
+    assert "12 fetch failures" in run_detail
+    assert conn.execute("SELECT COUNT(*) FROM series").fetchone()[0] == 13
     conn.close()
 
 

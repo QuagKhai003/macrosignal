@@ -132,6 +132,45 @@ signals:
          max_tokens: 2000}
     prompt_version: v1.0
 
+  - series_id: us_dollar
+    name: US broad dollar index, FRED DTWEXBGS (weather/EM penalty gauge, H2)
+    group: H
+    source: FRED
+    source_url: https://fred.stlouisfed.org/graph/fredgraph.csv?id=DTWEXBGS
+    schedule: daily
+    pub_lag_days: 1
+    history_start: 2006-01-02
+    window: rolling10y
+    series_codes: [DTWEXBGS]
+    causal_sentence: A strong and rising dollar strangles emerging markets and commodities because their debts and goods are priced in dollars, so it drains those trades before the crowd reacts.
+    elite_watcher: Every EM and commodity macro desk; the IMF's dollar-liquidity monitors
+
+  - series_id: inflation_expectations
+    name: 10-year breakeven inflation, FRED T10YIE (the bond engine's driver)
+    group: F
+    source: FRED
+    source_url: https://fred.stlouisfed.org/graph/fredgraph.csv?id=T10YIE
+    schedule: daily
+    pub_lag_days: 1
+    history_start: 2003-01-02
+    window: rolling10y
+    series_codes: [T10YIE]
+    causal_sentence: Bond prices rise when the inflation the market expects falls, because fixed coupons are worth more when money holds its value, so falling breakevens lift Treasuries.
+    elite_watcher: Bond desks and the Fed itself (breakevens are a stated policy input)
+
+  - series_id: us_ez_rate_diff
+    name: US minus Eurozone short-rate differential, FRED DGS2 - ECBDFR (the euro engine's driver)
+    group: H
+    source: FRED
+    source_url: https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS2
+    schedule: daily
+    pub_lag_days: 1
+    history_start: 2003-01-02
+    window: rolling10y
+    series_codes: [DGS2, ECBDFR]  # derived = DGS2 - ECBDFR (src/spine)
+    causal_sentence: A currency strengthens when its interest-rate advantage grows, so when the US-Eurozone rate gap narrows the euro gains as capital rotates back toward it.
+    elite_watcher: FX carry desks worldwide; the ECB and Fed both watch the differential
+
   - series_id: whale_berkshire
     name: Berkshire Hathaway cash position from 10-Q/10-K filings (the whale ledger)
     group: B

@@ -31,13 +31,14 @@ def valid_entry(**overrides):
     return e
 
 
-def test_shipped_registry_has_10_admitted_signals():
+def test_shipped_registry_has_13_admitted_signals():
     entries = registry.load_registry(as_of=AS_OF)
-    assert len(entries) == 10
+    assert len(entries) == 13
     assert {e["series_id"] for e in entries} == {
         "net_liquidity", "cot_managed_money", "spine_prices",
         "real_yields", "credit_spread", "oil_inventories",
-        "market_valuation", "manager_cash", "whale_berkshire", "news_heat"}
+        "market_valuation", "manager_cash", "whale_berkshire", "news_heat",
+        "us_dollar", "inflation_expectations", "us_ez_rate_diff"}
 
 
 def test_fixed_threshold_history_floor_is_one_year():

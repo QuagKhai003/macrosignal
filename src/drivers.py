@@ -31,28 +31,40 @@ MARKETS = {
 }
 
 
+# market -> (driver series, price series) for the "falling driver" engines.
+# Each rallies when its driver FALLS, and the F3 alive-check confirms the
+# historical sign still holds (whatever direction it is): gold vs real yields,
+# bonds vs inflation expectations, the euro vs the US-EZ rate gap.
+FALLING_DRIVERS = {
+    "gold": ("fred_dfii10", "price_gold"),
+    "ust10y": ("fred_t10yie", "price_ust10y"),
+    "eur": ("us_ez_rate_diff", "price_eur"),
+}
+
+
 def engines(conn: sqlite3.Connection, as_of: str,
             prev: dict | None = None) -> dict:
     """{market: {"engine": True/False/None, "alive": True/False/None}}.
     prev = {market: last week's engine answer} for hysteresis carry."""
     prev = prev or {}
     out = {m: {"engine": None, "alive": None} for m in MARKETS}
-    out["gold"] = gold_engine(conn, as_of)
+    for market, (driver, price) in FALLING_DRIVERS.items():
+        out[market] = falling_driver_engine(conn, driver, price, as_of)
     out["wti"] = oil_engine(conn, as_of, prev_engine=prev.get("wti"))
     return out
 
 
-def gold_engine(conn: sqlite3.Connection, as_of: str) -> dict:
-    """Engine ✓ = real yields FALLING (13-wk change < 0) AND driver alive.
-    Alive = sign(rho_52wk) == sign(rho_10yr historical) and |rho| >= 0.1."""
-    weekly = spine._weekly_last(spine._series_rows(conn, "fred_dfii10", as_of))
+def falling_driver_engine(conn: sqlite3.Connection, driver_sid: str,
+                          price_sid: str, as_of: str) -> dict:
+    """Engine ✓ = the driver is FALLING (13-wk weekly change < 0) AND the
+    driver is alive (sign of the 52-wk correlation of changes matches its
+    10-yr historical sign, |rho| >= 0.1). The generalized gold engine."""
+    weekly = spine._weekly_last(spine._series_rows(conn, driver_sid, as_of))
     values = [weekly[w] for w in sorted(weekly)]
     falling = values[-1] < values[-14] if len(values) >= 14 else None
 
-    rho_now = spine._weekly_corr(conn, "fred_dfii10", "price_gold", as_of,
-                                 window=52)
-    rho_hist = spine._weekly_corr(conn, "fred_dfii10", "price_gold", as_of,
-                                  window=520)
+    rho_now = spine._weekly_corr(conn, driver_sid, price_sid, as_of, window=52)
+    rho_hist = spine._weekly_corr(conn, driver_sid, price_sid, as_of, window=520)
     if rho_now is None or rho_hist is None:
         alive = None
     else:
@@ -61,6 +73,11 @@ def gold_engine(conn: sqlite3.Connection, as_of: str) -> dict:
     if falling is None or alive is None:
         return {"engine": None, "alive": alive}
     return {"engine": bool(falling and alive), "alive": alive}
+
+
+def gold_engine(conn: sqlite3.Connection, as_of: str) -> dict:
+    """Back-compat alias — gold is a falling-driver engine (real yields)."""
+    return falling_driver_engine(conn, "fred_dfii10", "price_gold", as_of)
 
 
 def oil_engine(conn: sqlite3.Connection, as_of: str,
