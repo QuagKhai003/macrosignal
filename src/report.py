@@ -28,7 +28,8 @@ WEATHER_PHRASE = {
 }
 MARKET_NAME = {"gold": "Gold", "wti": "Oil (WTI)", "ust10y": "US 10-yr note",
                "eur": "Euro", "corn": "Corn", "silver": "Silver",
-               "copper": "Copper", "natgas": "Natural gas"}
+               "copper": "Copper", "natgas": "Natural gas",
+               "semis": "Semiconductors (theme)"}
 
 
 def build(results: dict, prev_states: dict, week: str, weather: str = "YELLOW",
