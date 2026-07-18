@@ -38,7 +38,12 @@ ALLOWED_WINDOWS = {
     "rolling3y", "rolling10y", "rolling20y", "sma200",
     "same_week_5y_avg", "fixed_threshold",
 }
-MIN_HISTORY_YEARS = 10  # admission question 3
+MIN_HISTORY_YEARS = 10  # admission question 3 (percentile-windowed signals)
+# Question 3's stated rationale is "no history -> no percentile ->
+# inadmissible" (product doc §11). fixed_threshold signals never compute a
+# percentile; they need enough history for their own formula instead —
+# F6's trailing-year ratio needs 1+ year (decision 2026-07-18).
+MIN_HISTORY_YEARS_FIXED = 1
 
 
 def load_registry(path: Path | str = REGISTRY_PATH,
@@ -76,11 +81,14 @@ def validate(entries: list[dict], as_of: dt.date | None = None) -> list[str]:
             problems.append(f"{sid}: source_url must be a URL (admission question 2)")
         start = e.get("history_start")
         if isinstance(start, dt.date):
+            need = (MIN_HISTORY_YEARS_FIXED
+                    if e.get("window") == "fixed_threshold"
+                    else MIN_HISTORY_YEARS)
             years = (as_of - start).days / 365.25
-            if years < MIN_HISTORY_YEARS:
+            if years < need:
                 problems.append(
                     f"{sid}: only {years:.1f} years of history, need "
-                    f"{MIN_HISTORY_YEARS}+ (admission question 3)")
+                    f"{need}+ (admission question 3)")
         elif start is not None:
             problems.append(f"{sid}: history_start must be a YYYY-MM-DD date")
     return problems

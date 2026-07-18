@@ -1,9 +1,10 @@
 """SQLite storage — signals.db schema + connection.
 
-@context  The machine's only persistence (build plan Phase 0): 4 tables —
-          series (the signal registry mirror), observations (every raw number
-          ever fetched, append-only), states (weekly state machine output),
-          journal (the honesty ledger).
+@context  The machine's only persistence: series (the signal registry
+          mirror), observations (every raw number ever fetched, append-only),
+          states (weekly state machine output), journal (the honesty ledger),
+          headlines (every ingested headline + its audit-logged label —
+          Phase 4, the one caged LLM surface).
 @done     Idempotent schema creation; connect(); both data_date AND pub_date
           on observations (as-of discipline, tech spec Part 1).
 @todo     Phase 1: insert helpers for fetchers (INSERT OR IGNORE on
@@ -44,6 +45,19 @@ CREATE TABLE IF NOT EXISTS states (
     age_weeks   INTEGER NOT NULL CHECK (age_weeks >= 0),
     scores_json TEXT NOT NULL,
     PRIMARY KEY (market_id, week)
+);
+
+CREATE TABLE IF NOT EXISTS headlines (
+    headline_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    theme          TEXT NOT NULL,  -- market id (gold, wti, ...)
+    seen_date      TEXT NOT NULL,  -- ISO date GDELT saw the article
+    title          TEXT NOT NULL,
+    source_url     TEXT NOT NULL DEFAULT '',
+    label          TEXT CHECK (label IN
+                       ('excited', 'scared', 'neutral', 'error')),
+    model          TEXT,           -- stamped at classification time
+    prompt_version TEXT,
+    UNIQUE (theme, title, seen_date)
 );
 
 CREATE TABLE IF NOT EXISTS journal (

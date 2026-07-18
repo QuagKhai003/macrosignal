@@ -57,7 +57,7 @@ def test_all_sources_down_still_completes(tmp_path, capsys):
     run_detail = conn.execute("SELECT detail FROM journal"
                               " WHERE event_type = 'run'").fetchone()[0]
     assert "8 fetch failures" in run_detail
-    assert conn.execute("SELECT COUNT(*) FROM series").fetchone()[0] == 9
+    assert conn.execute("SELECT COUNT(*) FROM series").fetchone()[0] == 10
     conn.close()
 
 

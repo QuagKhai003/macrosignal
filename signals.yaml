@@ -89,6 +89,28 @@ signals:
     elite_watcher: Every oil trading desk (the weekly EIA report is oil's scheduled market-mover), Pierre Andurand
     series_codes: [PET.WCESTUS1.W]
 
+  - series_id: news_heat
+    name: Theme news volume + signed sentiment (the crowding meter, F6/F7)
+    group: G
+    source: GDELT
+    source_url: https://api.gdeltproject.org/api/v2/doc/doc
+    schedule: weekly
+    pub_lag_days: 0
+    history_start: 2017-01-01  # DOC 2.0 API coverage
+    window: fixed_threshold  # loud >3.0x, un-loud <2.0x, quiet <1.5x (F6)
+    causal_sentence: Noise is the last stage of a move, so when everyone is already talking about a theme, few buyers remain who have not bought.
+    elite_watcher: Contrarian PMs everywhere; the BofA FMS "most crowded trade" question measures the same herd
+    # GDELT query per theme — deterministic, editable config (build plan Phase 4)
+    themes:
+      gold: '"gold price" OR "gold rally" OR "gold market"'
+      wti: '"oil price" OR "crude oil" OR "OPEC"'
+      ust10y: '"treasury yields" OR "bond market selloff" OR "10-year yield"'
+      eur: '"euro exchange rate" OR "euro dollar" OR "ECB rate"'
+      corn: '"corn price" OR "corn crop" OR "grain prices"'
+    # the caged LLM (decision 2026-07-18: NVIDIA NIM replaces Claude API)
+    model: meta/llama-3.1-8b-instruct
+    prompt_version: v1.0
+
   - series_id: whale_berkshire
     name: Berkshire Hathaway cash position from 10-Q/10-K filings (the whale ledger)
     group: B
