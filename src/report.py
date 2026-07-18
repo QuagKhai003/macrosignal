@@ -31,8 +31,14 @@ MARKET_NAME = {"gold": "Gold", "wti": "Oil (WTI)", "ust10y": "US 10-yr note",
 
 
 def build(results: dict, prev_states: dict, week: str, weather: str = "YELLOW",
-          summary: dict | None = None, full: bool = False) -> str:
-    lines = [f"Week {week}", f"Weather: {WEATHER_PHRASE[weather]}", ""]
+          summary: dict | None = None, full: bool = False,
+          whale: dict | None = None, divergence: bool = False) -> str:
+    lines = [f"Week {week}", f"Weather: {WEATHER_PHRASE[weather]}"]
+    if divergence:
+        lines.append("Divergence: the pros have no spare cash while the"
+                     " biggest whale is hoarding it — the contrast is the"
+                     " signal.")
+    lines.append("")
     changes = {m: r for m, r in results.items()
                if r["state"] != prev_states.get(m, "NEUTRAL")}
     if not changes:
@@ -46,6 +52,17 @@ def build(results: dict, prev_states: dict, week: str, weather: str = "YELLOW",
         if unchanged:
             lines.append(f"Everything else is unchanged"
                          f" ({unchanged} markets).")
+    if full and whale:
+        frac = "?" if whale["fraction"] is None else f"{whale['fraction']:.0%}"
+        was = ("" if whale["prior_fraction"] is None
+               else f" (was {whale['prior_fraction']:.0%} the quarter before)")
+        lines += ["", "— The whale (Berkshire, filings only) —",
+                  f"Cash pile: ${whale['cash'] / 1e9:.1f}B as of"
+                  f" {whale['period']} — {frac} of its investable money is"
+                  f" waiting{was}.",
+                  "Signal: defensive whale. Alternative reads: structural /"
+                  " rotation.",
+                  f"Decider: next quarterly filing, due ~{whale['decider']}."]
     if full:
         lines += ["", "— The numbers —"]
         for market, r in results.items():

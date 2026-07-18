@@ -18,10 +18,10 @@
 import datetime as dt
 
 from src import db, registry, report, spine, states, weather
-from src.fetchers import cot, eia, fred, prices
+from src.fetchers import cot, edgar, eia, fred, prices
 
 FETCHERS = {"FRED": fred.fetch, "CFTC": cot.fetch, "Yahoo": prices.fetch,
-            "EIA": eia.fetch}
+            "EIA": eia.fetch, "EDGAR": edgar.fetch}
 
 
 def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
@@ -67,6 +67,11 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
         summary["weather_points"] = light["points"]
         for name, g in light["gauges"].items():
             summary[f"weather_{name}"] = g["value"]
+        whale_panel = edgar.panel_data(conn, as_of)
+        divergence = bool(
+            light["gauges"]["manager_cash"]["red"] is True and whale_panel
+            and whale_panel["fraction"] is not None
+            and whale_panel["fraction"] > 0.5)
         conn.execute(
             "INSERT INTO journal (date, market_id, event_type, detail,"
             " price_at_event) VALUES (?, NULL, 'run', ?, NULL)",
@@ -78,7 +83,7 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
 
     print(report.build(market_states, prev_states, week,
                        weather=light["light"], summary=summary,
-                       full=full))
+                       full=full, whale=whale_panel, divergence=divergence))
     print("run complete")
     return 0
 

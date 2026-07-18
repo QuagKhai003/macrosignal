@@ -89,6 +89,24 @@ signals:
     elite_watcher: Every oil trading desk (the weekly EIA report is oil's scheduled market-mover), Pierre Andurand
     series_codes: [PET.WCESTUS1.W]
 
+  - series_id: whale_berkshire
+    name: Berkshire Hathaway cash position from 10-Q/10-K filings (the whale ledger)
+    group: B
+    source: EDGAR
+    source_url: https://data.sec.gov/submissions/CIK0001067983.json
+    schedule: quarterly
+    pub_lag_days: 0  # pub_date = the actual EDGAR filing date (true as-of)
+    history_start: 2004-01-01
+    window: rolling20y  # vs the entity's own history (§5c Rule 2)
+    causal_sentence: When the most patient large investor on earth hoards cash instead of buying, the market offers nothing worth buying at current prices.
+    elite_watcher: Warren Buffett IS the signal; every allocator tracks his 10-Q cash line
+    cik: "0001067983"
+    # XBRL fact names summed for "cash" (per-segment contexts dedupe by context id)
+    cash_tags: ["us-gaap:CashAndCashEquivalentsAtCarryingValue", "brka:USTreasuryBills"]
+    equity_tags: ["us-gaap:EquitySecuritiesFvNi"]
+    # F13 insider-cluster universe: EMPTY until the equity themes are chosen
+    insider_tickers: []
+
   - series_id: manager_cash
     name: BofA Global Fund Manager Survey headline cash level, percent (weather gauge 1)
     group: A
