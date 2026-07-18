@@ -59,6 +59,7 @@ signals:
       price_ust10y: ZN=F
       price_eur: EURUSD=X
       price_corn: ZC=F
+      price_wilshire: ^W5000  # weather gauge 2 numerator (FRED dropped WILL5000PR)
     causal_sentence: Investors underreact to news and then herd, so a price above its own 200-day average tends to keep drifting the same way.
     elite_watcher: Trend-following funds (AQR, Man AHL, Winton) running the century-validated strategy
 
@@ -87,6 +88,19 @@ signals:
     causal_sentence: Crude stocks below their seasonal norm mean demand is outrunning supply, which lifts oil prices before the shortage makes headlines.
     elite_watcher: Every oil trading desk (the weekly EIA report is oil's scheduled market-mover), Pierre Andurand
     series_codes: [PET.WCESTUS1.W]
+
+  - series_id: market_valuation
+    name: US market cap / GDP, the Buffett indicator (weather gauge 2 - GDP leg)
+    group: F
+    source: FRED
+    source_url: https://fred.stlouisfed.org/graph/fredgraph.csv?id=GDP
+    schedule: quarterly
+    pub_lag_days: 120  # advance estimate lands ~4 months after the quarter's start date
+    history_start: 1947-01-01
+    window: rolling20y  # STANDING RULE: drifting series get rolling 20-yr, never all-history
+    causal_sentence: When the whole stock market costs more than everything the country produces in a year, buyers are paying for hope, and hope-priced markets have less room to rise.
+    elite_watcher: Warren Buffett (his stated favorite single measure), market strategists everywhere
+    series_codes: [GDP]
 
   - series_id: credit_spread
     name: Corporate credit spread, Moody's Baa vs 10-yr Treasury (weather gauge 3)

@@ -60,6 +60,34 @@ def derive_net_liquidity(conn: sqlite3.Connection, as_of: str) -> int:
     return added
 
 
+def derive_market_valuation(conn: sqlite3.Connection, as_of: str) -> int:
+    """Weather gauge 2 numerator over denominator: weekly last Wilshire close
+    divided by the latest PUBLISHED GDP (forward-fill by pub_date — the as-of
+    answer to quarterly lag). Stored as the derived market_valuation series."""
+    wilshire = _series_rows(conn, "price_wilshire", as_of)
+    gdp = _series_rows(conn, "fred_gdp", as_of)
+    if not wilshire or not gdp:
+        return 0
+    weekly_last = {}
+    for data_date, pub, value in wilshire:  # last close per ISO week wins
+        iso = dt.date.fromisoformat(data_date).isocalendar()
+        weekly_last[(iso.year, iso.week)] = (data_date, pub, value)
+    gdp_pubs = [r[1] for r in gdp]
+    added = 0
+    for data_date, pub, close in weekly_last.values():
+        i = bisect_right(gdp_pubs, data_date) - 1  # latest GDP published by then
+        if i < 0:
+            continue
+        ratio = close / gdp[i][2]
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO observations VALUES"
+            " ('market_valuation', ?, ?, ?)",
+            (data_date, max(pub, gdp[i][1]), ratio))
+        added += cur.rowcount
+    conn.commit()
+    return added
+
+
 def summarize(conn: sqlite3.Connection, as_of: str) -> dict:
     """The Phase 1 readouts, one dict — every value traceable to a formula."""
     out = {}
@@ -72,6 +100,9 @@ def summarize(conn: sqlite3.Connection, as_of: str) -> dict:
     out["net_liquidity_falling"] = formulas.is_falling(liq, lag=13)
     out["real_yield_pct"] = formulas.pct_rank(
         _values(conn, "fred_dfii10", as_of), WINDOW_OBS[("rolling10y", "daily")])
+    out["market_valuation_pct"] = formulas.pct_rank(
+        _values(conn, "market_valuation", as_of),
+        WINDOW_OBS[("rolling20y", "weekly")])
     # gauge series = BAA10Y (L-001 fix: full history; HY OAS still capped)
     out["credit_spread_pct"] = formulas.pct_rank(
         _values(conn, "fred_baa10y", as_of),

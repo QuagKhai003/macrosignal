@@ -80,6 +80,42 @@ def test_summarize_reports_insufficient_on_thin_data(conn):
     assert summary["gold_realyield_corr_52w"] is None
 
 
+def test_market_valuation_forward_fills_published_gdp(conn):
+    conn.execute("INSERT INTO series VALUES ('price_wilshire', 'Y', 'u',"
+                 " 'daily', 'sma200', '')")
+    conn.execute("INSERT INTO series VALUES ('fred_gdp', 'FRED', 'u',"
+                 " 'quarterly', 'rolling20y', '')")
+    conn.execute("INSERT INTO series VALUES ('market_valuation', 'FRED', 'u',"
+                 " 'weekly', 'rolling20y', '')")
+    # GDP Q1 (data 01-01) published 05-01; Q2 (04-01) published 08-01
+    obs(conn, "fred_gdp", [("2026-01-01", "2026-05-01", 30000.0),
+                           ("2026-04-01", "2026-08-01", 32000.0)])
+    # weekly closes in June: only Q1's GDP is PUBLISHED by then (as-of!)
+    obs(conn, "price_wilshire", [("2026-06-05", "2026-06-05", 75000.0),
+                                 ("2026-06-12", "2026-06-12", 76000.0)])
+    assert spine.derive_market_valuation(conn, "2026-07-18") == 2
+    rows = conn.execute(
+        "SELECT data_date, value FROM observations WHERE series_id ="
+        " 'market_valuation' ORDER BY data_date").fetchall()
+    assert rows[0] == ("2026-06-05", pytest.approx(75000.0 / 30000.0))
+    assert rows[1] == ("2026-06-12", pytest.approx(76000.0 / 30000.0))
+    # idempotent
+    assert spine.derive_market_valuation(conn, "2026-07-18") == 0
+
+
+def test_market_valuation_no_gdp_published_yet(conn):
+    conn.execute("INSERT INTO series VALUES ('price_wilshire', 'Y', 'u',"
+                 " 'daily', 'sma200', '')")
+    conn.execute("INSERT INTO series VALUES ('fred_gdp', 'FRED', 'u',"
+                 " 'quarterly', 'rolling20y', '')")
+    conn.execute("INSERT INTO series VALUES ('market_valuation', 'FRED', 'u',"
+                 " 'weekly', 'rolling20y', '')")
+    obs(conn, "fred_gdp", [("2026-01-01", "2026-05-01", 30000.0)])
+    obs(conn, "price_wilshire", [("2026-02-06", "2026-02-06", 75000.0)])
+    # the only GDP row publishes 05-01, AFTER the close: nothing derivable
+    assert spine.derive_market_valuation(conn, "2026-03-01") == 0
+
+
 def test_summarize_party_pct_hand_check(conn):
     import datetime as dt
     conn.execute("INSERT INTO series VALUES"

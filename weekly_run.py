@@ -57,6 +57,7 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
                     (as_of, f"fetch failed {e['series_id']}: {exc}"))
 
         added += spine.derive_net_liquidity(conn, as_of)
+        added += spine.derive_market_valuation(conn, as_of)
         summary = spine.summarize(conn, as_of)
         week = states.iso_week(today)
         prev_states = states.previous_states(conn, week)
