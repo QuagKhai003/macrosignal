@@ -30,8 +30,15 @@ import requests
 
 from src.fetchers import base
 
-HISTORY_YEARS = 7  # rolling3y window answerable through a 3-year replay
-                   # (window start 2023 - 3 yrs of history = 2020)
+HISTORY_YEARS = 16  # the 15-yr replay needs the party window answerable from
+                    # 2011 (2011 - 3 yrs = 2008; combined archives cover it)
+
+# pre-2017 years ship as one combined archive per report type
+HIST_URLS = {
+    "disagg": "https://www.cftc.gov/files/dea/history/fut_disagg_txt_hist_2006_2016.zip",
+    "tff": "https://www.cftc.gov/files/dea/history/fin_fut_txt_2006_2016.zip",
+}
+FIRST_ANNUAL_YEAR = 2017
 _HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; macrosignal research)"}
 _COL_REPORT_DATE, _COL_CODE = 2, 3
 
@@ -63,8 +70,13 @@ def fetch(entry: dict, conn: sqlite3.Connection, session=None,
                   if m["report"] == report}
         if not wanted:
             continue
-        texts = [_annual_text(session, annual_url.format(year=year))
-                 for year in range(today.year - HISTORY_YEARS + 1, today.year + 1)]
+        first_year = today.year - HISTORY_YEARS + 1
+        texts = []
+        if first_year < FIRST_ANNUAL_YEAR:
+            texts.append(_annual_text(session, HIST_URLS[report]))
+        texts += [_annual_text(session, annual_url.format(year=year))
+                  for year in range(max(first_year, FIRST_ANNUAL_YEAR),
+                                    today.year + 1)]
         texts.append(_get(session, weekly_url).text)
         for text in texts:
             for sid, data_date, net in _parse(text, wanted, col_long, col_short):
@@ -109,10 +121,24 @@ def _parse(text: str, wanted: dict[str, str], col_long: int, col_short: int):
         code = row[_COL_CODE].strip()
         if code not in wanted:
             continue
-        data_date = row[_COL_REPORT_DATE].strip()
+        data_date = _report_date(row[_COL_REPORT_DATE].strip())
+        if data_date is None:
+            continue
         try:
-            dt.date.fromisoformat(data_date)
             net = float(row[col_long]) - float(row[col_short])
         except ValueError:
             continue
         yield wanted[code], data_date, net
+
+
+def _report_date(raw: str) -> str | None:
+    """ISO in annual/weekly files; '12/27/2016 12:00:00 AM' in the combined
+    2006-2016 archives. Anything else (headers, garbage) -> None."""
+    try:
+        return dt.date.fromisoformat(raw).isoformat()
+    except ValueError:
+        pass
+    try:
+        return dt.datetime.strptime(raw, "%m/%d/%Y %I:%M:%S %p").date().isoformat()
+    except ValueError:
+        return None

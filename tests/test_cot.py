@@ -85,7 +85,7 @@ class FakeSession:
             return FakeResponse(status=self._status)
         if "disagg_txt" in url:
             return FakeResponse(content=as_zip(DISAGG_ANNUAL, "f_year.txt"))
-        if "fin_txt" in url:
+        if url.endswith(".zip"):  # TFF annual or combined archive
             return FakeResponse(content=as_zip(TFF_ANNUAL, "FinFutYY.txt"))
         if url == cot.REPORTS["disagg"][0]:
             return FakeResponse(text=DISAGG_WEEKLY)
@@ -113,18 +113,30 @@ def test_both_reports_parse_merge_and_lag(conn):
         ("cot_ust10y", "2026-07-14", "2026-07-17", -2079653.0)]
 
 
-def test_fetches_annuals_per_report_plus_weeklies(conn):
+def test_fetches_hist_archive_plus_annuals_plus_weeklies(conn):
     session = FakeSession()
     cot.fetch(ENTRY, conn, session=session, today=TODAY)
-    disagg_zips = [u for u in session.calls if "disagg_txt" in u]
-    tff_zips = [u for u in session.calls if "fin_txt" in u]
-    assert len(disagg_zips) == cot.HISTORY_YEARS
-    assert len(tff_zips) == cot.HISTORY_YEARS
-    first_year = TODAY.year - cot.HISTORY_YEARS + 1
-    assert disagg_zips[0].endswith(f"{first_year}.zip")
+    disagg_zips = [u for u in session.calls
+                   if "disagg_txt" in u and u.endswith(".zip")]
+    tff_zips = [u for u in session.calls
+                if "disagg_txt" not in u and u.endswith(".zip")]
+    # 2011..2016 come from ONE combined archive; 2017..2026 are annual
+    expected = 1 + (TODAY.year - cot.FIRST_ANNUAL_YEAR + 1)
+    assert len(disagg_zips) == expected
+    assert len(tff_zips) == expected
+    assert disagg_zips[0].endswith("hist_2006_2016.zip")
+    assert disagg_zips[1].endswith("2017.zip")
     assert disagg_zips[-1].endswith("2026.zip")
     assert cot.REPORTS["disagg"][0] in session.calls
     assert cot.REPORTS["tff"][0] in session.calls
+
+
+def test_hist_archive_date_format_parses(conn):
+    # the combined 2006-2016 archives use US datetime strings, floats too
+    line = tff_line("043602", "12/27/2016 12:00:00 AM", 0, 0).replace(
+        ",0,0,", ",422678.000000,613501.000000,")
+    parsed = list(cot._parse(line, {"043602": "cot_ust10y"}, 14, 15))
+    assert parsed == [("cot_ust10y", "2016-12-27", -190823.0)]
 
 
 def test_idempotent(conn):
@@ -150,7 +162,7 @@ def test_bad_zip_raises(conn):
 def test_zero_rows_for_a_market_raises(conn):
     class GoldOnlySession(FakeSession):
         def get(self, url, headers, timeout):
-            if "fin_txt" in url:
+            if "disagg_txt" not in url and url.endswith(".zip"):
                 return FakeResponse(content=as_zip("", "FinFutYY.txt"))
             if url == cot.REPORTS["tff"][0]:
                 return FakeResponse(text="")
