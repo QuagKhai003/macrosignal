@@ -135,6 +135,23 @@ def test_no_keys_raises(conn, monkeypatch, tmp_path):
         classifier.classify_pending(conn, ENTRY)
 
 
+def test_reasoning_content_field_fallback(conn):
+    class ReasoningFieldSession(FakeSession):
+        def post(self, body, timeout):
+            self.bodies.append(body)
+
+            class R:
+                status_code = 200
+                def json(self):
+                    return {"choices": [{"message": {
+                        "content": "",  # answer landed in the reasoning field
+                        "reasoning_content": "War risk dominates. scared"}}]}
+            return R()
+    counts = classifier.classify_pending(conn, ENTRY,
+                                         sessions=chain(ReasoningFieldSession()))
+    assert counts["scared"] == 3
+
+
 def test_parse_label_reasoning_and_ambiguity():
     # bare answers, punctuation, casing
     assert classifier._parse_label("Excited.") == "excited"

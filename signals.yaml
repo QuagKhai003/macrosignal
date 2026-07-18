@@ -111,12 +111,15 @@ signals:
     # Tried in order; a provider without its key is skipped; mid-run failure
     # fails over to the next (each label's audit row stamps provider:model).
     providers:
+      # both chosen models REASON before answering -> generous token budgets;
+      # the parser accepts exactly-one-distinct-label replies either way
       - {name: nim, url: "https://integrate.api.nvidia.com/v1/chat/completions",
-         key_env: NIM_API_KEY, model: stepfun-ai/step-3.7-flash}
+         key_env: NIM_API_KEY, model: stepfun-ai/step-3.7-flash,
+         max_tokens: 2000}
       - {name: openrouter, url: "https://openrouter.ai/api/v1/chat/completions",
          key_env: OPENROUTER_API_KEY,
          model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-         max_tokens: 2000}  # reasoning model: needs room to think, then answer
+         max_tokens: 2000}
     prompt_version: v1.0
 
   - series_id: whale_berkshire

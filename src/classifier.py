@@ -122,10 +122,15 @@ def _classify_one(session, model, version, title, pause) -> str:
             continue
         raise ClassifyError(f"HTTP {resp.status_code}")
     try:
-        text = resp.json()["choices"][0]["message"]["content"]
+        message = resp.json()["choices"][0]["message"]
     except (KeyError, IndexError, ValueError, TypeError) as exc:
         raise ClassifyError("unexpected payload") from exc
-    return _parse_label(text)
+    label = _parse_label(message.get("content") or "")
+    if label == "error":
+        # some reasoning APIs put the words in a separate reasoning field
+        label = _parse_label(message.get("reasoning_content")
+                             or message.get("reasoning") or "")
+    return label
 
 
 def _parse_label(text: str) -> str:
