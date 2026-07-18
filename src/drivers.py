@@ -4,14 +4,13 @@
           plus driver-alive status (§3.2, F3, F9 commodity variants). Phase 2
           scope (build plan): gold + oil only; ust10y/eur/corn return None —
           honestly "no driver defined", never guessed.
-@done     gold: real yields falling (13-week weekly change < 0) AND driver
-          alive (52-wk rolling corr sign matches the 10-yr historical sign,
-          |rho| >= 0.1). oil: commercial crude stocks below the same-calendar-
-          week 5-yr average (>= 4 of 5 prior years present) OR curve
-          backwardated (R3). Expansion batch 1: silver = gold's driver on its
-          own price; natgas = the shared seasonal_storage_engine on EIA
-          storage; copper honestly driverless. MARKETS registry.
-          cb_flow_strong DISCONNECTED (R2 kill); eur PARKED (R4 kill).
+@done     gold/silver: real yields falling OR the dollar falling (R5, spec
+          §3.2's second driver), each leg alive-checked (52-wk corr sign
+          matches the 10-yr sign, |rho| >= 0.1). oil: stocks below the
+          same-week 5-yr average OR curve backwardated (R3). natgas = the
+          shared seasonal_storage_engine; copper honestly driverless.
+          MARKETS registry. cb_flow_strong DISCONNECTED (R2 kill); eur
+          PARKED (R4 kill).
 @todo     Phase 2.2 consumes alive-streaks for the 26-week dead rule; more
           plugins as markets are admitted (Phase 6 expansion).
 @limits   Read-only on the db; as-of filtered (pub_date <= as_of). None means
@@ -69,6 +68,12 @@ def engines(conn: sqlite3.Connection, as_of: str,
     out = {m: {"engine": None, "alive": None} for m in MARKETS}
     for market, (driver, price) in FALLING_DRIVERS.items():
         out[market] = falling_driver_engine(conn, driver, price, as_of)
+    # research R5 (2026-07-19): gold/silver gain the spec's §3.2 second
+    # driver — the US dollar. Engine ✓ = real yields falling OR the dollar
+    # falling, each leg F3-alive-checked against the market's own price.
+    for market, price in (("gold", "price_gold"), ("silver", "price_silver")):
+        dollar_leg = falling_driver_engine(conn, "fred_dtwexbgs", price, as_of)
+        out[market] = _or_legs(out[market], dollar_leg)
     # gold's CB dominant-flow leg KILLED (research R2 verdict, 2026-07-18):
     # the IMF-reported flow was "strong" 2008-2014 (gold's bear) and OFF for
     # nearly all of 2022-24 — the era's defining purchases were UNREPORTED,
@@ -110,6 +115,20 @@ def corn_engine(conn: sqlite3.Connection, as_of: str,
     else:
         engine = prev_engine if prev_engine is not None else False
     return {"engine": engine, "alive": True}
+
+
+def _or_legs(a: dict, b: dict) -> dict:
+    """OR two engine answers (research R5): ✓ if either leg fires; unknown
+    only when no leg can answer yes and one cannot answer at all; alive
+    mirrors the same three-way logic across the legs."""
+    def three_or(x, y):
+        if x is True or y is True:
+            return True
+        if x is None or y is None:
+            return None
+        return False
+    return {"engine": three_or(a["engine"], b["engine"]),
+            "alive": three_or(a["alive"], b["alive"])}
 
 
 def cb_flow_strong(conn: sqlite3.Connection, as_of: str) -> bool | None:

@@ -31,16 +31,16 @@ def valid_entry(**overrides):
     return e
 
 
-def test_shipped_registry_has_19_admitted_signals():
+def test_shipped_registry_has_20_admitted_signals():
     entries = registry.load_registry(as_of=AS_OF)
-    assert len(entries) == 19
+    assert len(entries) == 20
     assert {e["series_id"] for e in entries} == {
         "net_liquidity", "cot_managed_money", "spine_prices",
         "real_yields", "credit_spread", "oil_inventories",
         "market_valuation", "manager_cash", "whale_berkshire", "news_heat",
         "us_dollar", "inflation_expectations", "us_ez_rate_diff",
         "corn_stocks", "cb_gold", "oil_curve", "ez_2y_yield",
-        "natgas_storage", "semis_earnings"}
+        "natgas_storage", "semis_earnings", "whale_ledger"}
 
 
 def test_fixed_threshold_history_floor_is_one_year():

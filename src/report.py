@@ -36,7 +36,8 @@ def build(results: dict, prev_states: dict, week: str, weather: str = "YELLOW",
           summary: dict | None = None, full: bool = False,
           whale: dict | None = None, divergence: bool = False,
           alarm_banner: str | None = None,
-          insider_flags: dict | None = None) -> str:
+          insider_flags: dict | None = None,
+          whale_ledger: list | None = None) -> str:
     lines = [f"Week {week}", f"Weather: {WEATHER_PHRASE[weather]}"]
     if divergence:
         lines.append("Divergence: the pros have no spare cash while the"
@@ -77,6 +78,18 @@ def build(results: dict, prev_states: dict, week: str, weather: str = "YELLOW",
                   "Signal: defensive whale. Alternative reads: structural /"
                   " rotation.",
                   f"Decider: next quarterly filing, due ~{whale['decider']}."]
+    if full and whale_ledger:
+        lines += ["", "— The whale ledger (13F filings, ~45 days delayed) —"]
+        grew = sum(1 for w in whale_ledger
+                   if w["prior"] is not None and w["total"] > w["prior"])
+        known = sum(1 for w in whale_ledger if w["prior"] is not None)
+        lines.append(f"{grew} of {known} tracked whales grew their US stock"
+                     f" exposure last quarter.")
+        for w in whale_ledger:
+            move = ("?" if w["prior"] is None else
+                    f"{(w['total'] / w['prior'] - 1) * 100:+.0f}%")
+            lines.append(f"  {w['name']}: ${w['total'] / 1e9:.1f}B as of"
+                         f" {w['period']} ({move} vs prior quarter)")
     if full:
         lines += ["", "— The numbers —"]
         for market, r in results.items():
