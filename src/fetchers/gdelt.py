@@ -117,8 +117,8 @@ def _store_headlines(conn, theme, articles) -> int:
 def _timeline(session, query, today, pause):
     start = today - dt.timedelta(days=VOLUME_LOOKBACK_DAYS)
     payload = _get(session, {
-        "query": f"({query}) sourcelang:english",  # parens: GDELT rejects
-        "mode": "timelinevolraw",                  # bare OR + filter combos
+        "query": f"{_grouped(query)} sourcelang:english",
+        "mode": "timelinevolraw",
         "format": "json", "startdatetime": _stamp(start),
         "enddatetime": _stamp(today)}, pause)
     series = payload.get("timeline", [])
@@ -130,7 +130,7 @@ def _timeline(session, query, today, pause):
 
 def _articles(session, query, start, end, pause):
     payload = _get(session, {
-        "query": f"({query}) sourcelang:english", "mode": "artlist",
+        "query": f"{_grouped(query)} sourcelang:english", "mode": "artlist",
         "format": "json", "maxrecords": str(MAX_HEADLINES),
         "startdatetime": _stamp(start), "enddatetime": _stamp(end)}, pause)
     out = []
@@ -170,6 +170,12 @@ def _get(session, params, pause) -> dict:
                                                   len(_BACKOFFS_S) - 1)]
             pause(min(wait, 180))
     raise FetchError(f"GDELT: {last} after {_TRIES} tries")
+
+
+def _grouped(query: str) -> str:
+    """GDELT's parser: parentheses are REQUIRED around OR lists combined with
+    filters, and FORBIDDEN around anything else."""
+    return f"({query})" if " OR " in query else query
 
 
 def _stamp(day: dt.date) -> str:
