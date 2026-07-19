@@ -29,9 +29,15 @@ def test_world_lines_full_picture():
     ledger = [{"name": "soros", "total": 9e9, "prior": 8e9},
               {"name": "pershing", "total": 12e9, "prior": 14e9},
               {"name": "duquesne", "total": 3e9, "prior": 4e9}]
+    results["gold"]["conc_pct"] = 55.0   # few hands
+    results["wti"]["conc_pct"] = 20.0    # broad
     lines = worldview.lines(summary, "RED", results, whale_ledger=ledger,
-                            insider_flags={"NVDA": True})
+                            insider_flags={"NVDA": True},
+                            foreign={"custody_change_4w": -0.8})
     text = "\n".join(lines)
+    assert "draining their US holdings (-0.8%" in text
+    assert "Held by few hands" in text and "Gold" in text.split(
+        "Held by few hands")[1]
     assert "money tide is rising" in text
     assert "dollar is strong" in text
     assert "priced near records" in text

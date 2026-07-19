@@ -30,6 +30,33 @@ ENTRY = {
 TODAY = dt.date(2026, 7, 18)
 
 
+def test_concentration_series_parsed(tmp_path):
+    """conc_gold = the more-concentrated side's top-4 share (actor A3)."""
+    conn = db.connect(tmp_path / "c.db")
+    db.init_db(conn)
+    wide = disagg_wide("088691", "2026-07-14", 136905, 16126,
+                       conc_long_4=41.2, conc_short_4=53.8)
+
+    class WideSession:
+        def get(self, url, headers, timeout):
+            if "disagg_txt" in url:
+                return FakeResponse(content=as_zip(
+                    "hdr\n" + wide, "f_year.txt"))
+            if url.endswith(".zip"):
+                return FakeResponse(content=as_zip(TFF_ANNUAL, "FinFutYY.txt"))
+            if url == cot.REPORTS["disagg"][0]:
+                return FakeResponse(text=wide)
+            return FakeResponse(text=TFF_WEEKLY)
+
+    entry = {**ENTRY, "markets": {"cot_gold": {"code": "088691",
+                                               "report": "disagg"}}}
+    cot.fetch(entry, conn, session=WideSession(), today=TODAY)
+    val = conn.execute("SELECT value FROM observations WHERE series_id ="
+                       " 'conc_gold' AND data_date = '2026-07-14'").fetchone()
+    assert val[0] == pytest.approx(53.8)  # short side more concentrated
+    conn.close()
+
+
 def disagg_line(code, date, long_pos, short_pos):
     # Disaggregated layout: MM long/short at cols 13/14
     row = ["MKT - EXCHANGE", "260714", date, code, "CBT", "00", "001",
@@ -60,6 +87,16 @@ TFF_ANNUAL = "\n".join([
     "Market_and_Exchange_Names,As_of,Report_Date,Code," + "x," * 12 + "x",
     tff_line("043602", "2026-07-07", 400000, 2400000),   # net = -2000000
 ])
+
+
+def disagg_wide(code, date, mm_long, mm_short, conc_long_4, conc_short_4):
+    """A full-width disagg row (191 cols): MM long/short at 13/14, top-4
+    gross concentration long/short at 161/162 (niche actor A3)."""
+    row = ["0"] * 191
+    row[2], row[3] = date, code
+    row[13], row[14] = str(mm_long), str(mm_short)
+    row[161], row[162] = str(conc_long_4), str(conc_short_4)
+    return ",".join(row)
 
 
 def as_zip(text: str, member: str) -> bytes:
