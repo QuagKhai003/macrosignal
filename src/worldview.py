@@ -29,7 +29,10 @@ def lines(summary: dict, weather: str, results: dict,
           insider_flags: dict | None = None,
           foreign: dict | None = None,
           insider_detail: dict | None = None,
-          edgar_events: dict | None = None) -> list[str]:
+          edgar_events: dict | None = None,
+          best_ideas: list | None = None,
+          bearish_sells: list | None = None,
+          turnover_spikes: dict | None = None) -> list[str]:
     out = []
 
     # niche actor A2: foreign-government demand for US assets (two windows)
@@ -122,6 +125,35 @@ def lines(summary: dict, weather: str, results: dict,
     # Tier-3 (A4): activist stakes + insider sale-intent on the equity universe
     for label, tickers in sorted((edgar_events or {}).items()):
         out.append(f"Recent {label} filing(s): " + ", ".join(tickers) + ".")
+
+    # Tier-C (R2): unusual turnover — the pre-13D wolf-pack accumulation tell.
+    # A 13D on a spiking name is the strong combined signal (rare on mega-caps).
+    spikes = turnover_spikes.get("spikes") if isinstance(
+        turnover_spikes, dict) else turnover_spikes
+    activists = set((edgar_events or {}).get("activist stake", []))
+    if spikes:
+        packing = [t for t in spikes if t in activists]
+        if packing:
+            out.append("WOLF PACK forming — activist filing + volume surge at: "
+                       + ", ".join(packing) + ".")
+        plain = [t for t in spikes if t not in activists]
+        if plain:
+            out.append("Unusual trading volume (possible quiet accumulation) "
+                       "at: " + ", ".join(plain) + ".")
+
+    # research R2: each whale's highest-conviction bet ("Best Idea") — the
+    # single largest 13F position, where the alpha concentrates
+    # research R2: only LARGE + majority-of-stake insider sells are bearish
+    if bearish_sells:
+        out.append("Heavy insider selling (large AND most of their stake) at: "
+                   + ", ".join(bearish_sells) + ".")
+
+    strong = [b for b in (best_ideas or []) if b.get("weight", 0) >= 0.10]
+    if strong:
+        top = ", ".join(f"{b['name']} → {b['issuer']} ({b['weight']:.0%})"
+                        for b in sorted(strong, key=lambda b: -b["weight"])[:4])
+        out.append("Whale high-conviction bets (largest 13F position): "
+                   + top + ".")
 
     # niche actor A3: whale concentration — few hands dominating a market
     concentrated = [MARKET_NAME[m] for m, r in results.items()

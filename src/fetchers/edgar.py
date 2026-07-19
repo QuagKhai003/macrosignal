@@ -26,7 +26,7 @@ import sqlite3
 
 import requests
 
-from src.fetchers import base, edgarevents, form4
+from src.fetchers import base, edgarevents, equityvol, form4
 
 _HEADERS = {"User-Agent": "macrosignal personal research quangngokhai@gmail.com"}
 SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
@@ -55,9 +55,10 @@ def fetch(entry: dict, conn: sqlite3.Connection, session=None) -> int:
     added += _fetch_quarterlies(entry, conn, session, cik, filings)
     added += _fetch_13f_total(entry, conn, session, cik, filings)
     conn.commit()
-    # the equity universe rides this entry's config; both no-op while empty
+    # the equity universe rides this entry's config; all no-op while empty
     added += form4.fetch(entry, conn, session=session)
     added += edgarevents.fetch(entry, conn, session=session)
+    added += equityvol.fetch(entry, conn, session=None)  # Yahoo, own session
     return added
 
 

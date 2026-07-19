@@ -195,19 +195,80 @@ def test_cluster_detail_opportunistic_without_history(conn):
                               "cfo": True}
 
 
-def test_cluster_detail_routine_is_downgraded(conn):
-    # all three bought the SAME calendar month a year earlier -> routine
-    prior = ["2025-06-01", "2025-06-10", "2025-06-20"]
-    now = ["2026-06-01", "2026-06-10", "2026-06-20"]
-    conn.executemany(
-        "INSERT INTO insider_buys VALUES (?,?,?,?,?,?,?)",
-        [("NVDA", b, d, d, f"p{i}", "", 0)
-         for i, (b, d) in enumerate(zip(["A", "B", "C"], prior))]
-        + [("NVDA", b, d, d, f"n{i}", "", 0)
-           for i, (b, d) in enumerate(zip(["A", "B", "C"], now))])
+def test_cluster_detail_routine_needs_three_consecutive_years(conn):
+    # CMP exact rule (R2): routine = same calendar month in 3+ CONSECUTIVE
+    # prior years. Seed 2023/2024/2025 June for A,B,C + a 2022 anchor so the
+    # history spans >3 years, then the 2026 June cluster is all-routine.
+    rows = []
+    for i, b in enumerate(["A", "B", "C"]):
+        for y in (2022, 2023, 2024, 2025, 2026):
+            d = f"{y}-06-{1 + i:02d}"
+            rows.append(("NVDA", b, d, d, f"{b}{y}", "", 0))
+    conn.executemany("INSERT INTO insider_buys VALUES (?,?,?,?,?,?,?)", rows)
     detail = insiders.cluster_detail(conn, "2026-07-19")
     assert detail["NVDA"]["flagged"] is True
-    assert detail["NVDA"]["opportunistic"] is False  # all routine
+    assert detail["NVDA"]["opportunistic"] is False  # 3 consecutive prior yrs
+
+
+def test_cluster_detail_two_prior_years_not_routine(conn):
+    # only 2 consecutive prior years (not 3) -> NOT routine -> opportunistic
+    rows = []
+    for i, b in enumerate(["A", "B", "C"]):
+        for y in (2023, 2024, 2025, 2026):  # spans >3 yrs; only 2024,2025 prior
+            if y in (2023,):  # leave a gap so no 3 consecutive before 2026
+                continue
+            d = f"{y}-06-{1 + i:02d}"
+            rows.append(("NVDA", b, d, d, f"{b}{y}", "", 0))
+    # add a far anchor so history span > ROUTINE_YEARS
+    rows.append(("NVDA", "Z", "2021-01-01", "2021-01-01", "z", "", 0))
+    conn.executemany("INSERT INTO insider_buys VALUES (?,?,?,?,?,?,?)", rows)
+    detail = insiders.cluster_detail(conn, "2026-07-19")
+    assert detail["NVDA"]["opportunistic"] is True  # 2024,2025 only = 2 yrs
+
+
+# ── Tier-B: gated insider-sell tracking (R2 asymmetry) ───────────────────────
+
+SELL_XML = """<?xml version="1.0"?>
+<ownershipDocument>
+  <reportingOwner>
+    <reportingOwnerId><rptOwnerName>SELL SAM</rptOwnerName></reportingOwnerId>
+  </reportingOwner>
+  <nonDerivativeTable>
+    <nonDerivativeTransaction>
+      <transactionDate><value>2026-07-05</value></transactionDate>
+      <transactionCoding><transactionCode>S</transactionCode></transactionCoding>
+      <transactionAmounts>
+        <transactionShares><value>150000</value></transactionShares>
+        <transactionAcquiredDisposedCode><value>D</value></transactionAcquiredDisposedCode>
+      </transactionAmounts>
+      <postTransactionAmounts>
+        <sharesOwnedFollowingTransaction><value>50000</value></sharesOwnedFollowingTransaction>
+      </postTransactionAmounts>
+    </nonDerivativeTransaction>
+  </nonDerivativeTable>
+</ownershipDocument>"""
+
+
+def test_parse_sells_size_and_fraction():
+    sells = form4._parse_sells(SELL_XML)
+    # 150k sold, 50k left -> fraction 150k/200k = 0.75
+    assert sells == [("SELL SAM", "2026-07-05", 150000.0, pytest.approx(0.75))]
+
+
+def test_bearish_sell_gate(conn):
+    conn.executemany(
+        "INSERT INTO insider_sells VALUES (?,?,?,?,?,?,?)",
+        [("NVDA", "A", "2026-07-05", "2026-07-06", "s1", 150000, 0.75),  # both
+         ("AMD", "B", "2026-07-05", "2026-07-06", "s2", 150000, 0.20),   # small frac
+         ("INTC", "C", "2026-07-05", "2026-07-06", "s3", 5000, 0.90)])   # small size
+    assert insiders.bearish_sells(conn, "2026-07-19") == ["NVDA"]
+
+
+def test_bearish_sell_world_line():
+    from src import worldview
+    lines = worldview.lines({}, "GREEN", {}, bearish_sells=["NVDA", "AMD"])
+    assert "Heavy insider selling" in "\n".join(lines)
+    assert "NVDA, AMD" in "\n".join(lines)
 
 
 def test_10b51_footnote_detected():

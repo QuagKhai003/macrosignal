@@ -110,6 +110,7 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
         ledger_cfg = next((e["whales"] for e in entries
                            if e["series_id"] == "whale_ledger"), {})
         whale_ledger = whales.ledger(conn, as_of, ledger_cfg)
+        whale_best = whales.best_ideas(conn, as_of, ledger_cfg)
         divergence = bool(
             light["gauges"]["manager_cash"]["red"] is True and whale_panel
             and whale_panel["fraction"] is not None
@@ -127,7 +128,9 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
                                 whale_ledger=whale_ledger,
                                 insider_flags=insider_flags, foreign=foreign,
                                 insider_detail=insider_detail,
-                                edgar_events=edgar_ev)
+                                edgar_events=edgar_ev, best_ideas=whale_best,
+                                bearish_sells=insiders.bearish_sells(conn, as_of),
+                                turnover_spikes=insiders.turnover_spikes(conn, as_of))
         rates = forward.base_rates(conn, as_of)
         sims = simulate.simulate(conn, as_of)
         # persist the rendered readouts: the dashboard displays EXACTLY what
