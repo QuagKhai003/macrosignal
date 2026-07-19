@@ -195,19 +195,35 @@ def test_cluster_detail_opportunistic_without_history(conn):
                               "cfo": True}
 
 
-def test_cluster_detail_routine_is_downgraded(conn):
-    # all three bought the SAME calendar month a year earlier -> routine
-    prior = ["2025-06-01", "2025-06-10", "2025-06-20"]
-    now = ["2026-06-01", "2026-06-10", "2026-06-20"]
-    conn.executemany(
-        "INSERT INTO insider_buys VALUES (?,?,?,?,?,?,?)",
-        [("NVDA", b, d, d, f"p{i}", "", 0)
-         for i, (b, d) in enumerate(zip(["A", "B", "C"], prior))]
-        + [("NVDA", b, d, d, f"n{i}", "", 0)
-           for i, (b, d) in enumerate(zip(["A", "B", "C"], now))])
+def test_cluster_detail_routine_needs_three_consecutive_years(conn):
+    # CMP exact rule (R2): routine = same calendar month in 3+ CONSECUTIVE
+    # prior years. Seed 2023/2024/2025 June for A,B,C + a 2022 anchor so the
+    # history spans >3 years, then the 2026 June cluster is all-routine.
+    rows = []
+    for i, b in enumerate(["A", "B", "C"]):
+        for y in (2022, 2023, 2024, 2025, 2026):
+            d = f"{y}-06-{1 + i:02d}"
+            rows.append(("NVDA", b, d, d, f"{b}{y}", "", 0))
+    conn.executemany("INSERT INTO insider_buys VALUES (?,?,?,?,?,?,?)", rows)
     detail = insiders.cluster_detail(conn, "2026-07-19")
     assert detail["NVDA"]["flagged"] is True
-    assert detail["NVDA"]["opportunistic"] is False  # all routine
+    assert detail["NVDA"]["opportunistic"] is False  # 3 consecutive prior yrs
+
+
+def test_cluster_detail_two_prior_years_not_routine(conn):
+    # only 2 consecutive prior years (not 3) -> NOT routine -> opportunistic
+    rows = []
+    for i, b in enumerate(["A", "B", "C"]):
+        for y in (2023, 2024, 2025, 2026):  # spans >3 yrs; only 2024,2025 prior
+            if y in (2023,):  # leave a gap so no 3 consecutive before 2026
+                continue
+            d = f"{y}-06-{1 + i:02d}"
+            rows.append(("NVDA", b, d, d, f"{b}{y}", "", 0))
+    # add a far anchor so history span > ROUTINE_YEARS
+    rows.append(("NVDA", "Z", "2021-01-01", "2021-01-01", "z", "", 0))
+    conn.executemany("INSERT INTO insider_buys VALUES (?,?,?,?,?,?,?)", rows)
+    detail = insiders.cluster_detail(conn, "2026-07-19")
+    assert detail["NVDA"]["opportunistic"] is True  # 2024,2025 only = 2 yrs
 
 
 def test_10b51_footnote_detected():

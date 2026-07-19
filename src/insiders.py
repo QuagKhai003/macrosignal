@@ -37,13 +37,16 @@ def current_flags(conn, as_of: str) -> dict[str, bool]:
 
 
 def cluster_detail(conn, as_of: str) -> dict[str, dict]:
-    """Richer F13 read (Tier-2): per flagged issuer, whether the cluster is
-    OPPORTUNISTIC (Cohen-Malloy-Pomorski: a buy is ROUTINE if the same buyer
-    at the same issuer also bought in the same calendar month of a PRIOR year
-    — routine buys carry little signal; a cluster is opportunistic if at least
-    one buyer breaks their own pattern) and whether a CFO is among the buyers.
-    Routine detection needs 2+ years of history, so until then every cluster
-    reads opportunistic — honest and self-correcting as history accrues."""
+    """Richer F13 read (Tier-2, sharpened by research Round 2): per flagged
+    issuer, whether the cluster is OPPORTUNISTIC and whether a CFO is among
+    the buyers.
+
+    ROUTINE (Cohen-Malloy-Pomorski exact rule, verified R2): a buyer is
+    routine at an issuer if they bought there in the same calendar month in
+    at least ROUTINE_YEARS CONSECUTIVE prior years — those trades carry ~zero
+    signal. A cluster is opportunistic if at least one buyer is NOT routine.
+    Routine detection needs ROUTINE_YEARS+1 years of history, so until then
+    every cluster reads opportunistic — honest and self-correcting."""
     from src.fetchers.form4 import is_cfo
     floor = (dt.date.fromisoformat(as_of)
              - dt.timedelta(days=2 * WINDOW_DAYS)).isoformat()
@@ -56,8 +59,8 @@ def cluster_detail(conn, as_of: str) -> dict[str, dict]:
         " WHERE filing_date <= ?", (as_of,)).fetchall()
     prior = {(t, b, dt.date.fromisoformat(d).year,
               dt.date.fromisoformat(d).month) for t, b, d in history}
-    enough_history = len({dt.date.fromisoformat(d).year
-                          for _t, _b, d in history}) >= 2
+    span = {dt.date.fromisoformat(d).year for _t, _b, d in history}
+    enough_history = len(span) > ROUTINE_YEARS
 
     flags = cluster_flags([(t, b, d) for t, b, d, _r in window])
     out = {}
@@ -76,10 +79,16 @@ def cluster_detail(conn, as_of: str) -> dict[str, dict]:
     return out
 
 
+ROUTINE_YEARS = 3  # CMP: same calendar month in 3+ CONSECUTIVE prior years
+
+
 def _is_routine(issuer, buyer, date, prior) -> bool:
-    """The buyer bought this issuer in the same calendar month of a prior year."""
+    """The buyer bought this issuer in the same calendar month in at least
+    ROUTINE_YEARS CONSECUTIVE years immediately before this trade's year
+    (the exact Cohen-Malloy-Pomorski definition, R2-verified)."""
     d = dt.date.fromisoformat(date)
-    return any((issuer, buyer, y, d.month) in prior for y in range(2006, d.year))
+    return all((issuer, buyer, d.year - k, d.month) in prior
+               for k in range(1, ROUTINE_YEARS + 1))
 
 
 def cluster_flags(buy_events: list[tuple[str, str, str]]) -> dict[str, bool]:
