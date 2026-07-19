@@ -91,6 +91,43 @@ def test_fetch_idempotent(conn):
     assert whales.fetch(ENTRY, conn, session=FakeSession()) == 0
 
 
+# ── Best Idea (research R2): largest 13F position + weight ────────────────────
+
+INFOTABLE = (
+    "<informationTable>"
+    "<infoTable><nameOfIssuer>APPLE INC</nameOfIssuer>"
+    "<value>3000000000</value></infoTable>"
+    "<infoTable><nameOfIssuer>NVIDIA CORP</nameOfIssuer>"
+    "<value>7000000000</value></infoTable>"
+    "</informationTable>")
+
+
+def test_best_idea_largest_position(conn):
+    whales.fetch(ENTRY, conn, session=FakeSession({".xml": INFOTABLE}))
+    best = whales.best_ideas(conn, "2026-07-19", ENTRY["whales"])
+    # total 10B; NVIDIA 7B is the biggest = 70% weight
+    assert best == [{"name": "baupost", "period": "2026-03-31",
+                     "issuer": "NVIDIA CORP", "weight": pytest.approx(0.70)}]
+
+
+def test_best_idea_as_of_gate(conn):
+    whales.fetch(ENTRY, conn, session=FakeSession({".xml": INFOTABLE}))
+    # before the latest filing is public, only the older quarter shows
+    best = whales.best_ideas(conn, "2026-03-01", ENTRY["whales"])
+    assert best and best[0]["period"] == "2025-12-31"
+
+
+def test_best_idea_world_line():
+    from src import worldview
+    lines = worldview.lines({}, "GREEN", {}, best_ideas=[
+        {"name": "soros", "period": "2026-03-31", "issuer": "GOOG",
+         "weight": 0.22},
+        {"name": "tiny", "period": "2026-03-31", "issuer": "X", "weight": 0.03}])
+    text = "\n".join(lines)
+    assert "high-conviction" in text and "soros → GOOG (22%)" in text
+    assert "tiny" not in text  # below the 10% floor
+
+
 def test_namespaced_value_tags_parse(conn):
     ns_xml = ('<ns1:informationTable><ns1:infoTable><ns1:value> 700 '
               '</ns1:value></ns1:infoTable></ns1:informationTable>')

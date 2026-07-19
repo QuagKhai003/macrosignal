@@ -29,7 +29,8 @@ def lines(summary: dict, weather: str, results: dict,
           insider_flags: dict | None = None,
           foreign: dict | None = None,
           insider_detail: dict | None = None,
-          edgar_events: dict | None = None) -> list[str]:
+          edgar_events: dict | None = None,
+          best_ideas: list | None = None) -> list[str]:
     out = []
 
     # niche actor A2: foreign-government demand for US assets (two windows)
@@ -122,6 +123,15 @@ def lines(summary: dict, weather: str, results: dict,
     # Tier-3 (A4): activist stakes + insider sale-intent on the equity universe
     for label, tickers in sorted((edgar_events or {}).items()):
         out.append(f"Recent {label} filing(s): " + ", ".join(tickers) + ".")
+
+    # research R2: each whale's highest-conviction bet ("Best Idea") — the
+    # single largest 13F position, where the alpha concentrates
+    strong = [b for b in (best_ideas or []) if b.get("weight", 0) >= 0.10]
+    if strong:
+        top = ", ".join(f"{b['name']} → {b['issuer']} ({b['weight']:.0%})"
+                        for b in sorted(strong, key=lambda b: -b["weight"])[:4])
+        out.append("Whale high-conviction bets (largest 13F position): "
+                   + top + ".")
 
     # niche actor A3: whale concentration — few hands dominating a market
     concentrated = [MARKET_NAME[m] for m, r in results.items()

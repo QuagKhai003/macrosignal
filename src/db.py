@@ -61,6 +61,15 @@ CREATE TABLE IF NOT EXISTS headlines (
     UNIQUE (theme, title, seen_date)
 );
 
+CREATE TABLE IF NOT EXISTS whale_top_holding (
+    name        TEXT NOT NULL,  -- whale key (baupost, soros, ...)
+    period      TEXT NOT NULL,  -- ISO quarter-end the 13F reports
+    issuer      TEXT NOT NULL,  -- largest single position's issuer name
+    weight      REAL NOT NULL,  -- that position's fraction of the 13F total
+    filing_date TEXT NOT NULL,  -- ISO EDGAR filing date (as-of gate)
+    PRIMARY KEY (name, period)
+);
+
 CREATE TABLE IF NOT EXISTS edgar_events (
     ticker      TEXT NOT NULL,  -- issuer, from the equity universe
     label       TEXT NOT NULL,  -- 'activist stake' | 'insider sale-intent'
