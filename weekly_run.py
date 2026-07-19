@@ -16,6 +16,7 @@
 """
 
 import datetime as dt
+import json
 
 from src import (alarms, classifier, db, forward, insiders, registry, report,
                  simulate, spine, states, weather, worldview)
@@ -104,6 +105,18 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
                                 insider_flags=insider_flags)
         rates = forward.base_rates(conn, as_of)
         sims = simulate.simulate(conn, as_of)
+        # persist the rendered readouts: the dashboard displays EXACTLY what
+        # the report said — one source of words, no math duplicated in JS
+        fwd_lines = {m: forward.sentence(
+            rates.get(m, {}).get(r["state"])) for m, r in
+            market_states.items()}
+        sim_lines = {m: simulate.sentence(
+            sims.get(m, {}).get(r["state"])) for m, r in
+            market_states.items()}
+        conn.execute(
+            "INSERT OR REPLACE INTO weekly_readouts VALUES (?, ?, ?, ?)",
+            (week, json.dumps(world), json.dumps(fwd_lines),
+             json.dumps(sim_lines)))
         conn.execute(
             "INSERT INTO journal (date, market_id, event_type, detail,"
             " price_at_event) VALUES (?, NULL, 'run', ?, NULL)",

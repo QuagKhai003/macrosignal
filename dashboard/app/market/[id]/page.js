@@ -1,8 +1,8 @@
 // Screen 2 — Market Detail (§2): verdict, four question cards, the plan,
 // history strip, numbers behind "Show the numbers".
 import { notFound } from "next/navigation";
-import { latestWeek, statesForWeek, marketHistory, latestPrice } from
-  "../../../lib/db";
+import { latestWeek, statesForWeek, marketHistory, latestPrice,
+  weeklyReadouts } from "../../../lib/db";
 import { MARKET_NAME, STATE, questionCards } from "../../../lib/dictionary";
 import { verdictSentence, whatWouldChange } from "../../../lib/verdict";
 
@@ -39,6 +39,20 @@ export default async function MarketDetail({ params }) {
           <li key={line}>{line}</li>
         ))}
       </ul>
+
+      {(() => {
+        const readouts = weeklyReadouts(week);
+        const fwd = readouts?.forward?.[id];
+        const sim = readouts?.sims?.[id];
+        if (!fwd && !sim) return null;
+        return (
+          <>
+            <h2>The forecast (history, not prophecy)</h2>
+            {fwd && <div className="card">{fwd}</div>}
+            {sim && <div className="card">{sim}</div>}
+          </>
+        );
+      })()}
 
       <h2>The last two years</h2>
       <ul className="strip" aria-label="Monthly state history">

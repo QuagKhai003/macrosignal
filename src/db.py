@@ -61,6 +61,13 @@ CREATE TABLE IF NOT EXISTS headlines (
     UNIQUE (theme, title, seen_date)
 );
 
+CREATE TABLE IF NOT EXISTS weekly_readouts (
+    week         TEXT PRIMARY KEY,  -- ISO week, e.g. 2026-W29
+    world_json   TEXT NOT NULL,     -- rendered world-picture lines (list)
+    forward_json TEXT NOT NULL,     -- {market: rendered base-rate sentence}
+    sim_json     TEXT NOT NULL      -- {market: rendered simulation sentence}
+);
+
 CREATE TABLE IF NOT EXISTS insider_buys (
     ticker      TEXT NOT NULL,  -- issuer, from the F13 universe config
     buyer       TEXT NOT NULL,  -- reporting owner name as filed

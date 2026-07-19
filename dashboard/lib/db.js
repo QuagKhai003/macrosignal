@@ -69,6 +69,17 @@ export function lastRun() {
     .get() ?? null;
 }
 
+export function weeklyReadouts(week) {
+  const row = conn()
+    .prepare("SELECT world_json, forward_json, sim_json FROM" +
+             " weekly_readouts WHERE week = ?")
+    .get(week);
+  if (!row) return null;
+  return { world: JSON.parse(row.world_json),
+           forward: JSON.parse(row.forward_json),
+           sims: JSON.parse(row.sim_json) };
+}
+
 export function latestPrice(marketId) {
   return conn()
     .prepare("SELECT data_date, value FROM observations WHERE series_id = ?" +

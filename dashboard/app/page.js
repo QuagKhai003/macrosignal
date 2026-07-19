@@ -1,7 +1,8 @@
 // Screen 1 — This Week (§2): weather banner, changes, the unchanged line.
 // No charts, no numbers: sentences force verdicts.
 import Link from "next/link";
-import { latestWeek, statesForWeek, previousStates, lastRun } from "../lib/db";
+import { latestWeek, statesForWeek, previousStates, lastRun, weeklyReadouts }
+  from "../lib/db";
 import { MARKET_NAME, STATE, WEATHER } from "../lib/dictionary";
 import { verdictSentence } from "../lib/verdict";
 
@@ -18,6 +19,7 @@ export default function ThisWeek() {
   const weather = WEATHER[rows[0]?.scores.weather ?? "YELLOW"];
   const changes = rows.filter((r) => (prev[r.market_id] ?? "NEUTRAL") !== r.state);
   const run = lastRun();
+  const readouts = weeklyReadouts(week);
 
   return (
     <>
@@ -47,6 +49,17 @@ export default function ThisWeek() {
       {changes.length > 0 && changes.length < rows.length && (
         <p className="soft">Everything else is unchanged
           ({rows.length - changes.length} markets).</p>
+      )}
+
+      {readouts?.world?.length > 0 && (
+        <>
+          <h2>The world right now</h2>
+          <div className="card">
+            {readouts.world.map((line) => (
+              <p key={line}>{line}</p>
+            ))}
+          </div>
+        </>
       )}
 
       <h2>All markets</h2>
