@@ -88,6 +88,31 @@ BEARISH_SELL_SHARES = 100_000
 BEARISH_SELL_FRACTION = 0.50
 
 
+TURNOVER_SPIKE = 2.5  # latest week's volume vs its trailing median (proxy for
+                      # the ~325%-of-normal wolf-pack trigger, R2)
+
+
+def turnover_spikes(conn, as_of: str) -> list[str]:
+    """Equity-universe tickers whose latest weekly share volume is a large
+    multiple of its own trailing median — the pre-13D accumulation the R2
+    wolf-pack literature measures in TURNOVER. Context only. Needs >=9 weeks
+    of volume; None-safe."""
+    out = []
+    for (sid,) in conn.execute(
+            "SELECT DISTINCT series_id FROM observations WHERE series_id"
+            " LIKE 'vol_%'"):
+        vols = [r[0] for r in conn.execute(
+            "SELECT value FROM observations WHERE series_id = ? AND"
+            " pub_date <= ? ORDER BY data_date", (sid, as_of))]
+        if len(vols) < 9:
+            continue
+        trailing = sorted(vols[-9:-1])
+        median = trailing[len(trailing) // 2]
+        if median > 0 and vols[-1] > TURNOVER_SPIKE * median:
+            out.append(sid.split("_", 1)[1].upper())
+    return sorted(out)
+
+
 def bearish_sells(conn, as_of: str, days: int = 2 * WINDOW_DAYS) -> list[str]:
     """Tickers with a GATED bearish insider sale in the trailing window: a
     sale that is BOTH >BEARISH_SELL_SHARES shares AND >BEARISH_SELL_FRACTION
