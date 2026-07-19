@@ -28,7 +28,8 @@ def lines(summary: dict, weather: str, results: dict,
           whale_ledger: list | None = None,
           insider_flags: dict | None = None,
           foreign: dict | None = None,
-          insider_detail: dict | None = None) -> list[str]:
+          insider_detail: dict | None = None,
+          edgar_events: dict | None = None) -> list[str]:
     out = []
 
     # niche actor A2: foreign-government demand for US assets (two windows)
@@ -117,6 +118,10 @@ def lines(summary: dict, weather: str, results: dict,
         if marks:
             out.append(f"  — {ticker}'s buying is high-quality ("
                        + ", ".join(marks) + ").")
+
+    # Tier-3 (A4): activist stakes + insider sale-intent on the equity universe
+    for label, tickers in sorted((edgar_events or {}).items()):
+        out.append(f"Recent {label} filing(s): " + ", ".join(tickers) + ".")
 
     # niche actor A3: whale concentration — few hands dominating a market
     concentrated = [MARKET_NAME[m] for m, r in results.items()

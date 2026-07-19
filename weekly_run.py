@@ -20,8 +20,8 @@ import json
 
 from src import (alarms, classifier, db, forward, insiders, registry, report,
                  simulate, spine, states, weather, worldview)
-from src.fetchers import (auctions, cot, earnings, ecb, edgar, eia, fred,
-                          gdelt, imf, nass, prices, whales)
+from src.fetchers import (auctions, cot, earnings, ecb, edgar, edgarevents,
+                          eia, fred, gdelt, imf, nass, prices, whales)
 
 FETCHERS = {"FRED": fred.fetch, "CFTC": cot.fetch, "Yahoo": prices.fetch,
             "EIA": eia.fetch, "EDGAR": edgar.fetch, "GDELT": gdelt.fetch,
@@ -122,10 +122,12 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
             conc = spine._values(conn, f"conc_{market}", as_of)
             market_states[market]["conc_pct"] = conc[-1] if conc else None
         foreign = _foreign_demand(conn, as_of)
+        edgar_ev = edgarevents.recent_events(conn, as_of)
         world = worldview.lines(summary, light["light"], market_states,
                                 whale_ledger=whale_ledger,
                                 insider_flags=insider_flags, foreign=foreign,
-                                insider_detail=insider_detail)
+                                insider_detail=insider_detail,
+                                edgar_events=edgar_ev)
         rates = forward.base_rates(conn, as_of)
         sims = simulate.simulate(conn, as_of)
         # persist the rendered readouts: the dashboard displays EXACTLY what

@@ -61,6 +61,13 @@ CREATE TABLE IF NOT EXISTS headlines (
     UNIQUE (theme, title, seen_date)
 );
 
+CREATE TABLE IF NOT EXISTS edgar_events (
+    ticker      TEXT NOT NULL,  -- issuer, from the equity universe
+    label       TEXT NOT NULL,  -- 'activist stake' | 'insider sale-intent'
+    filing_date TEXT NOT NULL,  -- ISO EDGAR filing date (true as-of)
+    accession   TEXT NOT NULL PRIMARY KEY
+);
+
 CREATE TABLE IF NOT EXISTS weekly_readouts (
     week         TEXT PRIMARY KEY,  -- ISO week, e.g. 2026-W29
     world_json   TEXT NOT NULL,     -- rendered world-picture lines (list)
