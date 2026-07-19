@@ -39,7 +39,8 @@ def build(results: dict, prev_states: dict, week: str, weather: str = "YELLOW",
           insider_flags: dict | None = None,
           whale_ledger: list | None = None,
           world_lines: list | None = None,
-          forward_stats: dict | None = None) -> str:
+          forward_stats: dict | None = None,
+          simulations: dict | None = None) -> str:
     lines = [f"Week {week}", f"Weather: {WEATHER_PHRASE[weather]}"]
     if divergence:
         lines.append("Divergence: the pros have no spare cash while the"
@@ -77,6 +78,12 @@ def build(results: dict, prev_states: dict, week: str, weather: str = "YELLOW",
         for market, r in results.items():
             stats = forward_stats.get(market, {}).get(r["state"])
             lines.append(f"{MARKET_NAME[market]}: {_fwd.sentence(stats)}")
+    if simulations:
+        from src import simulate as _sim
+        lines += ["", "— The simulation (replays of history's variety) —"]
+        for market, r in results.items():
+            result = simulations.get(market, {}).get(r["state"])
+            lines.append(f"{MARKET_NAME[market]}: {_sim.sentence(result)}")
     if full and whale:
         frac = "?" if whale["fraction"] is None else f"{whale['fraction']:.0%}"
         was = ("" if whale["prior_fraction"] is None

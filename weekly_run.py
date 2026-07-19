@@ -18,7 +18,7 @@
 import datetime as dt
 
 from src import (alarms, classifier, db, forward, insiders, registry, report,
-                 spine, states, weather, worldview)
+                 simulate, spine, states, weather, worldview)
 from src.fetchers import (cot, earnings, ecb, edgar, eia, fred, gdelt, imf,
                           nass, prices, whales)
 
@@ -103,6 +103,7 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
                                 whale_ledger=whale_ledger,
                                 insider_flags=insider_flags)
         rates = forward.base_rates(conn, as_of)
+        sims = simulate.simulate(conn, as_of)
         conn.execute(
             "INSERT INTO journal (date, market_id, event_type, detail,"
             " price_at_event) VALUES (?, NULL, 'run', ?, NULL)",
@@ -118,7 +119,8 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
                        alarm_banner=budget["banner"],
                        insider_flags=insider_flags,
                        whale_ledger=whale_ledger,
-                       world_lines=world, forward_stats=rates))
+                       world_lines=world, forward_stats=rates,
+                       simulations=sims))
     print("run complete")
     return 0
 
