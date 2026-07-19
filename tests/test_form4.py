@@ -22,6 +22,9 @@ FORM4_BUY = """<?xml version="1.0"?>
 <ownershipDocument>
   <reportingOwner>
     <reportingOwnerId><rptOwnerName>DOE JANE</rptOwnerName></reportingOwnerId>
+    <reportingOwnerRelationship>
+      <officerTitle>Chief Financial Officer</officerTitle>
+    </reportingOwnerRelationship>
   </reportingOwner>
   <nonDerivativeTable>
     <nonDerivativeTransaction>
@@ -92,20 +95,28 @@ def conn(tmp_path):
 
 def test_parse_keeps_buys_drops_sales():
     buys = form4._parse_form4(FORM4_BUY)
-    assert buys == [("DOE JANE", "2026-07-01")]
+    assert buys == [("DOE JANE", "2026-07-01", "Chief Financial Officer",
+                     False)]
 
 
 def test_parse_bad_xml_returns_empty():
     assert form4._parse_form4("<not-xml") == []
 
 
+def test_is_cfo():
+    assert form4.is_cfo("Chief Financial Officer")
+    assert form4.is_cfo("EVP and CFO")
+    assert not form4.is_cfo("Chief Executive Officer")
+
+
 def test_fetch_stores_buy_rows(conn):
     forms = [("4", "0001-26-000001", "2026-07-03", "form4.xml")]
     added = form4.fetch(ENTRY, conn, session=make_session(forms), today=TODAY)
     assert added == 1
-    row = conn.execute("SELECT ticker, buyer, trans_date, filing_date"
-                       " FROM insider_buys").fetchone()
-    assert row == ("NVDA", "DOE JANE", "2026-07-01", "2026-07-03")
+    row = conn.execute("SELECT ticker, buyer, trans_date, filing_date, role,"
+                       " is_10b51 FROM insider_buys").fetchone()
+    assert row == ("NVDA", "DOE JANE", "2026-07-01", "2026-07-03",
+                   "Chief Financial Officer", 0)
 
 
 def test_fetch_idempotent_and_skips_seen_accessions(conn):
@@ -140,7 +151,9 @@ def test_unknown_ticker_raises(conn):
 # ── current_flags: db → F13, as-of on the FILING date ────────────────────────
 
 def put_buys(conn, rows):
-    conn.executemany("INSERT INTO insider_buys VALUES (?,?,?,?,?)", rows)
+    # rows: (ticker, buyer, trans_date, filing_date, accession[, role])
+    padded = [r if len(r) == 7 else (*r, "", 0) for r in rows]
+    conn.executemany("INSERT INTO insider_buys VALUES (?,?,?,?,?,?,?)", padded)
 
 
 def test_current_flags_cluster_and_as_of(conn):
@@ -162,3 +175,45 @@ def test_report_renders_insider_line():
                         insider_flags={"NVDA": True, "AMD": False})
     assert "Insider cluster" in text and "NVDA" in text and "AMD" not in \
         text.split("Insider cluster")[1]
+
+
+# ── Tier-2: opportunistic-vs-routine + CFO detail ────────────────────────────
+
+def a_cluster(conn, ticker, dates, buyers, role=""):
+    conn.executemany(
+        "INSERT INTO insider_buys VALUES (?,?,?,?,?,?,?)",
+        [(ticker, b, d, d, f"{ticker}{i}", role, 0)
+         for i, (b, d) in enumerate(zip(buyers, dates))])
+
+
+def test_cluster_detail_opportunistic_without_history(conn):
+    # a fresh cluster, no prior years -> honestly opportunistic; CFO present
+    a_cluster(conn, "NVDA", ["2026-06-01", "2026-06-10", "2026-06-20"],
+              ["A", "B", "C"], role="Chief Financial Officer")
+    detail = insiders.cluster_detail(conn, "2026-07-19")
+    assert detail["NVDA"] == {"flagged": True, "opportunistic": True,
+                              "cfo": True}
+
+
+def test_cluster_detail_routine_is_downgraded(conn):
+    # all three bought the SAME calendar month a year earlier -> routine
+    prior = ["2025-06-01", "2025-06-10", "2025-06-20"]
+    now = ["2026-06-01", "2026-06-10", "2026-06-20"]
+    conn.executemany(
+        "INSERT INTO insider_buys VALUES (?,?,?,?,?,?,?)",
+        [("NVDA", b, d, d, f"p{i}", "", 0)
+         for i, (b, d) in enumerate(zip(["A", "B", "C"], prior))]
+        + [("NVDA", b, d, d, f"n{i}", "", 0)
+           for i, (b, d) in enumerate(zip(["A", "B", "C"], now))])
+    detail = insiders.cluster_detail(conn, "2026-07-19")
+    assert detail["NVDA"]["flagged"] is True
+    assert detail["NVDA"]["opportunistic"] is False  # all routine
+
+
+def test_10b51_footnote_detected():
+    xml = FORM4_BUY.replace("</nonDerivativeTable>",
+                            "</nonDerivativeTable><footnotes><footnote>"
+                            "Made under a Rule 10b5-1 plan.</footnote>"
+                            "</footnotes>")
+    buys = form4._parse_form4(xml)
+    assert buys[0][3] is True

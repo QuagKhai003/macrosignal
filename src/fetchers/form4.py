@@ -70,20 +70,24 @@ def fetch(entry: dict, conn: sqlite3.Connection, session=None,
             if acc in seen:
                 continue
             buys = _parse_form4(_get_doc(session, cik, acc, doc))
-            for buyer, trans_date in buys:
+            for buyer, trans_date, role, is_10b51 in buys:
                 cur = conn.execute(
-                    "INSERT OR IGNORE INTO insider_buys VALUES (?,?,?,?,?)",
-                    (ticker, buyer, trans_date, filing_date, acc))
+                    "INSERT OR IGNORE INTO insider_buys VALUES"
+                    " (?,?,?,?,?,?,?)",
+                    (ticker, buyer, trans_date, filing_date, acc, role,
+                     int(is_10b51)))
                 added += cur.rowcount
             seen.add(acc)
     conn.commit()
     return added
 
 
-def _parse_form4(xml_text: str) -> list[tuple[str, str]]:
-    """(buyer, transaction_date) per open-market purchase — transactionCode
-    P AND acquired 'A', non-derivative table only. Unparseable filings
-    return [] (variant layouts are skipped, never guessed at)."""
+def _parse_form4(xml_text: str) -> list[tuple[str, str, str, bool]]:
+    """(buyer, transaction_date, role, is_10b51) per open-market purchase —
+    transactionCode P AND acquired 'A', non-derivative table only. role =
+    the reporting owner's officer title (Tier-2 CFO weighting); is_10b51 =
+    the filing declares a Rule 10b5-1 plan (near-moot for buys, captured for
+    future sell-tracking). Unparseable filings return []."""
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError:
@@ -93,6 +97,13 @@ def _parse_form4(xml_text: str) -> list[tuple[str, str]]:
     owners = [o for o in owners if o]
     if not owners:
         return []
+    role = ""
+    for rel in root.iter("reportingOwnerRelationship"):
+        title = rel.findtext("officerTitle", "").strip()
+        if title:
+            role = title
+            break
+    plan = _declares_10b51(root)
     out = []
     for txn in root.iter("nonDerivativeTransaction"):
         code = txn.findtext("transactionCoding/transactionCode", "").strip()
@@ -101,8 +112,27 @@ def _parse_form4(xml_text: str) -> list[tuple[str, str]]:
             "").strip()
         date = txn.findtext("transactionDate/value", "").strip()
         if code == "P" and acquired == "A" and date:
-            out.extend((owner, date) for owner in owners)
+            out.extend((owner, date, role, plan) for owner in owners)
     return out
+
+
+def _declares_10b51(root) -> bool:
+    """The machine-readable flag (newer schemas) OR a footnote saying so."""
+    flag = root.findtext(".//aff10b5One", "").strip().lower()
+    if flag in ("1", "true"):
+        return True
+    for fn in root.iter("footnote"):
+        if "10b5-1" in (fn.text or ""):
+            return True
+    return False
+
+
+CFO_TITLES = ("chief financial officer", "cfo", "principal financial officer")
+
+
+def is_cfo(role: str) -> bool:
+    r = role.lower()
+    return any(t in r for t in CFO_TITLES)
 
 
 def _cik_map(session) -> dict:
