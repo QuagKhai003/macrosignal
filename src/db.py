@@ -74,6 +74,8 @@ CREATE TABLE IF NOT EXISTS insider_buys (
     trans_date  TEXT NOT NULL,  -- ISO transaction date
     filing_date TEXT NOT NULL,  -- ISO EDGAR filing date (true as-of)
     accession   TEXT NOT NULL,  -- source Form 4 accession number
+    role        TEXT NOT NULL DEFAULT '',  -- officer title (Tier-2: CFO weight)
+    is_10b51    INTEGER NOT NULL DEFAULT 0, -- pre-planned trade flag
     PRIMARY KEY (accession, buyer, trans_date)
 );
 
@@ -95,7 +97,21 @@ def connect(db_path: Path | str = DB_PATH) -> sqlite3.Connection:
     return conn
 
 
+# columns added to existing tables after their first ship — applied
+# idempotently so a live db self-heals without a rebuild (append-only safe:
+# ADD COLUMN never drops data). (table, column, definition).
+_MIGRATIONS = [
+    ("insider_buys", "role", "TEXT NOT NULL DEFAULT ''"),
+    ("insider_buys", "is_10b51", "INTEGER NOT NULL DEFAULT 0"),
+]
+
+
 def init_db(conn: sqlite3.Connection) -> None:
-    """Create all tables if absent. Safe to call on every run."""
+    """Create all tables if absent, then apply additive migrations. Safe to
+    call on every run."""
     conn.executescript(_SCHEMA)
+    for table, column, definition in _MIGRATIONS:
+        cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
     conn.commit()

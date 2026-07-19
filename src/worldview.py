@@ -27,7 +27,8 @@ from src.report import MARKET_NAME
 def lines(summary: dict, weather: str, results: dict,
           whale_ledger: list | None = None,
           insider_flags: dict | None = None,
-          foreign: dict | None = None) -> list[str]:
+          foreign: dict | None = None,
+          insider_detail: dict | None = None) -> list[str]:
     out = []
 
     # niche actor A2: foreign-government demand for US assets (two windows)
@@ -105,6 +106,17 @@ def lines(summary: dict, weather: str, results: dict,
     if clustered:
         out.append("Insiders are cluster-buying at: "
                    + ", ".join(clustered) + ".")
+    # Tier-2: elevate the high-quality clusters (opportunistic and/or CFO)
+    for ticker in clustered:
+        d = (insider_detail or {}).get(ticker, {})
+        marks = []
+        if d.get("opportunistic"):
+            marks.append("off their usual pattern")
+        if d.get("cfo"):
+            marks.append("including the CFO")
+        if marks:
+            out.append(f"  — {ticker}'s buying is high-quality ("
+                       + ", ".join(marks) + ").")
 
     # niche actor A3: whale concentration — few hands dominating a market
     concentrated = [MARKET_NAME[m] for m, r in results.items()
