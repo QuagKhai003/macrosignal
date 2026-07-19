@@ -20,13 +20,30 @@ import json
 
 from src import (alarms, classifier, db, forward, insiders, registry, report,
                  simulate, spine, states, weather, worldview)
-from src.fetchers import (cot, earnings, ecb, edgar, eia, fred, gdelt, imf,
-                          nass, prices, whales)
+from src.fetchers import (auctions, cot, earnings, ecb, edgar, eia, fred,
+                          gdelt, imf, nass, prices, whales)
 
 FETCHERS = {"FRED": fred.fetch, "CFTC": cot.fetch, "Yahoo": prices.fetch,
             "EIA": eia.fetch, "EDGAR": edgar.fetch, "GDELT": gdelt.fetch,
             "NASS": nass.fetch, "IMF": imf.fetch, "ECB": ecb.fetch,
-            "XBRL": earnings.fetch, "EDGAR13F": whales.fetch}
+            "XBRL": earnings.fetch, "EDGAR13F": whales.fetch,
+            "TREASURY": auctions.fetch}
+
+
+def _foreign_demand(conn, as_of: str) -> dict:
+    """The two foreign-government windows for the world picture (A2): the
+    4-week change in NY-Fed custody holdings, and the latest note-auction
+    indirect share vs its trailing average. Missing data -> absent key."""
+    out = {}
+    custody = spine._values(conn, "fred_wsefint1", as_of)
+    if len(custody) >= 5 and custody[-5]:
+        out["custody_change_4w"] = 100.0 * (custody[-1] / custody[-5] - 1.0)
+    shares = spine._values(conn, "auction_indirect_share", as_of)
+    if shares:
+        out["indirect_share_pct"] = 100.0 * shares[-1]
+        recent = shares[-10:]
+        out["indirect_share_avg_pct"] = 100.0 * sum(recent) / len(recent)
+    return out
 
 
 def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
@@ -100,9 +117,13 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
         budget = alarms.alarm_budget(conn, today)
         summary["alarms_rolling_year"] = budget["events"]
         insider_flags = insiders.current_flags(conn, as_of)
+        for market in market_states:
+            conc = spine._values(conn, f"conc_{market}", as_of)
+            market_states[market]["conc_pct"] = conc[-1] if conc else None
+        foreign = _foreign_demand(conn, as_of)
         world = worldview.lines(summary, light["light"], market_states,
                                 whale_ledger=whale_ledger,
-                                insider_flags=insider_flags)
+                                insider_flags=insider_flags, foreign=foreign)
         rates = forward.base_rates(conn, as_of)
         sims = simulate.simulate(conn, as_of)
         # persist the rendered readouts: the dashboard displays EXACTLY what

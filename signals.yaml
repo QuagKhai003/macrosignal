@@ -312,6 +312,31 @@ signals:
     # (src/insiders.py @todo) — nothing is faked meanwhile.
     insider_tickers: [NVDA, AMD, AVGO, MU, INTC, TXN, QCOM, AMAT, LRCX, KLAC]
 
+  - series_id: foreign_custody
+    name: Foreign-official securities held in custody at the NY Fed, weekly (niche actor A2)
+    group: H
+    source: FRED
+    source_url: https://fred.stlouisfed.org/graph/fredgraph.csv?id=WSEFINT1
+    schedule: weekly
+    pub_lag_days: 1  # H.4.1 lands Thursday for the Wednesday as-of date
+    history_start: 2002-12-18
+    window: rolling10y
+    series_codes: [WSEFINT1]
+    causal_sentence: When foreign central banks add to or drain their US securities held at the Fed, the world's governments are voting on US assets a full month before the official monthly report shows it.
+    elite_watcher: Rates desks and the Treasury itself watch the weekly custody line as the fast read on foreign-official demand
+
+  - series_id: treasury_auctions
+    name: Treasury note auction indirect-bidder share, per auction (niche actor A2 - foreign demand)
+    group: H
+    source: TREASURY
+    source_url: https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/od/auctions_query
+    schedule: weekly  # coupon auctions land ~twice a month; consumed weekly
+    pub_lag_days: 0  # bidder classes are published the same day as the auction
+    history_start: 2008-04-07  # bidder-class breakdown starts here
+    window: rolling3y
+    causal_sentence: The indirect-bidder share of a Treasury note auction is largely foreign official demand, so a rising share means the world's governments are still buying US debt and a falling one warns they are stepping back.
+    elite_watcher: Every rates desk reads auction indirect shares the minute they print; the Treasury Borrowing Advisory Committee studies them
+
   - series_id: whale_ledger
     name: More whales - quarterly 13F stock-exposure totals for named legendary filers (actors A1)
     group: B

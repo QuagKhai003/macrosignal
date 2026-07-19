@@ -41,6 +41,10 @@ HIST_URLS = {
 FIRST_ANNUAL_YEAR = 2017
 _HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; macrosignal research)"}
 _COL_REPORT_DATE, _COL_CODE = 2, 3
+# disaggregated concentration: gross top-4 traders' long/short share of OI
+# (cols verified against the annual disagg header, 191 fields). The niche
+# whale-concentration gauge — already inside the file we download (actor A3).
+_CONC_LONG_4, _CONC_SHORT_4 = 161, 162
 
 # report type -> (weekly url, annual zip url template, long col, short col).
 # Verified 2026-07-18 against the annual files' official header rows.
@@ -65,6 +69,7 @@ def fetch(entry: dict, conn: sqlite3.Connection, session=None,
     lag = dt.timedelta(days=int(entry["pub_lag_days"]))
     rows_by_sid: dict[str, list] = {sid: [] for sid in entry["markets"]}
 
+    disagg_texts = []
     for report, (weekly_url, annual_url, col_long, col_short) in REPORTS.items():
         wanted = {m["code"]: sid for sid, m in entry["markets"].items()
                   if m["report"] == report}
@@ -78,6 +83,8 @@ def fetch(entry: dict, conn: sqlite3.Connection, session=None,
                   for year in range(max(first_year, FIRST_ANNUAL_YEAR),
                                     today.year + 1)]
         texts.append(_get(session, weekly_url).text)
+        if report == "disagg":
+            disagg_texts = texts  # reuse for concentration, no re-fetch
         for text in texts:
             for sid, data_date, net in _parse(text, wanted, col_long, col_short):
                 pub = (dt.date.fromisoformat(data_date) + lag).isoformat()
@@ -91,7 +98,45 @@ def fetch(entry: dict, conn: sqlite3.Connection, session=None,
                                f"CFTC {market['report']} contract {market['code']}"
                                f" (component of {entry['series_id']})")
         added += base.insert_observations(conn, sid, rows_by_sid[sid])
+    added += _store_concentration(entry, conn, disagg_texts, lag)
     conn.commit()
+    return added
+
+
+def _store_concentration(entry, conn, disagg_texts, lag) -> int:
+    """conc_<market> = the more-concentrated side's top-4-trader share of open
+    interest (disaggregated markets only — the whale-concentration gauge, A3).
+    Parses the disagg texts ALREADY fetched for positioning; no re-fetch."""
+    wanted = {m["code"]: f"conc_{sid.split('_', 1)[1]}"
+              for sid, m in entry["markets"].items()
+              if m["report"] == "disagg"}
+    if not wanted:
+        return 0
+    rows_by_sid: dict[str, list] = {sid: [] for sid in wanted.values()}
+    for text in disagg_texts:
+        for row in csv.reader(io.StringIO(text)):
+            if len(row) <= _CONC_SHORT_4:
+                continue
+            sid = wanted.get(row[_COL_CODE].strip())
+            if sid is None:
+                continue
+            date = _report_date(row[_COL_REPORT_DATE].strip())
+            if date is None:
+                continue
+            try:
+                conc = max(float(row[_CONC_LONG_4]), float(row[_CONC_SHORT_4]))
+            except ValueError:
+                continue
+            pub = (dt.date.fromisoformat(date) + lag).isoformat()
+            rows_by_sid[sid].append((date, pub, conc))
+    added = 0
+    for sid, rows in rows_by_sid.items():
+        if not rows:
+            continue
+        conn.execute("INSERT OR IGNORE INTO series VALUES (?, 'CFTC', '',"
+                     " 'weekly', 'rolling3y', 'top-4 trader concentration')",
+                     (sid,))
+        added += base.insert_observations(conn, sid, rows)
     return added
 
 

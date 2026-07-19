@@ -26,8 +26,24 @@ from src.report import MARKET_NAME
 
 def lines(summary: dict, weather: str, results: dict,
           whale_ledger: list | None = None,
-          insider_flags: dict | None = None) -> list[str]:
+          insider_flags: dict | None = None,
+          foreign: dict | None = None) -> list[str]:
     out = []
+
+    # niche actor A2: foreign-government demand for US assets (two windows)
+    foreign = foreign or {}
+    custody = foreign.get("custody_change_4w")
+    if custody is not None:
+        direction = "adding to" if custody > 0 else "draining"
+        out.append(f"Foreign central banks are {direction} their US holdings"
+                   f" ({custody:+.1f}% over 4 weeks, weekly custody data).")
+    indirect = foreign.get("indirect_share_pct")
+    indirect_avg = foreign.get("indirect_share_avg_pct")
+    if indirect is not None and indirect_avg is not None:
+        vs = "above" if indirect >= indirect_avg else "below"
+        out.append(f"Foreign demand at the latest note auction was"
+                   f" {indirect:.0f}% ({vs} its recent {indirect_avg:.0f}%"
+                   f" average).")
 
     liq = summary.get("net_liquidity_pct")
     if liq is not None:
@@ -89,6 +105,13 @@ def lines(summary: dict, weather: str, results: dict,
     if clustered:
         out.append("Insiders are cluster-buying at: "
                    + ", ".join(clustered) + ".")
+
+    # niche actor A3: whale concentration — few hands dominating a market
+    concentrated = [MARKET_NAME[m] for m, r in results.items()
+                    if r.get("conc_pct") is not None and r["conc_pct"] >= 45]
+    if concentrated:
+        out.append("Held by few hands (top-4 traders > 45% of the market): "
+                   + ", ".join(concentrated) + ".")
 
     # the disagreements — the contrast is the signal
     if (val is not None and val >= 90 and whale_ledger

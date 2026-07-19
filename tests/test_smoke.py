@@ -59,7 +59,8 @@ def test_all_sources_down_still_completes(tmp_path, capsys):
                 "Yahoo": DownSession(), "EIA": DownSession(),
                 "EDGAR": DownSession(), "GDELT": DownSession(),
                 "IMF": DownSession(), "ECB": DownSession(),
-                "XBRL": DownSession(), "EDGAR13F": DownSession()}
+                "XBRL": DownSession(), "EDGAR13F": DownSession(),
+                "TREASURY": DownSession()}
     assert weekly_run.main(db_path=db_path, today=AS_OF,
                            sessions=sessions) == 0
     assert capsys.readouterr().out.strip().endswith("run complete")
@@ -67,13 +68,13 @@ def test_all_sources_down_still_completes(tmp_path, capsys):
     conn = db.connect(db_path)
     flags = conn.execute("SELECT COUNT(*) FROM journal"
                          " WHERE event_type = 'flag'").fetchone()[0]
-    # 7 FRED + CFTC + Yahoo + 3 EIA + EDGAR + GDELT + NASS + IMF + ECB
-    # + XBRL + EDGAR13F
-    assert flags == 19
+    # 8 FRED + CFTC + Yahoo + 3 EIA + EDGAR + GDELT + NASS + IMF + ECB
+    # + XBRL + EDGAR13F + TREASURY
+    assert flags == 21
     run_detail = conn.execute("SELECT detail FROM journal"
                               " WHERE event_type = 'run'").fetchone()[0]
-    assert "19 fetch failures" in run_detail
-    assert conn.execute("SELECT COUNT(*) FROM series").fetchone()[0] == 20
+    assert "21 fetch failures" in run_detail
+    assert conn.execute("SELECT COUNT(*) FROM series").fetchone()[0] == 22
     # the run persists its rendered readouts for the dashboard (one row/week)
     assert conn.execute("SELECT COUNT(*) FROM weekly_readouts"
                         ).fetchone()[0] == 1
@@ -86,7 +87,8 @@ def test_partial_run_derives_net_liquidity(tmp_path, capsys):
                 "Yahoo": DownSession(), "EIA": DownSession(),
                 "EDGAR": DownSession(), "GDELT": DownSession(),
                 "IMF": DownSession(), "ECB": DownSession(),
-                "XBRL": DownSession(), "EDGAR13F": DownSession()}
+                "XBRL": DownSession(), "EDGAR13F": DownSession(),
+                "TREASURY": DownSession()}
     assert weekly_run.main(db_path=db_path, today=AS_OF,
                            sessions=sessions, full=True) == 0
     out = capsys.readouterr().out
@@ -102,8 +104,8 @@ def test_partial_run_derives_net_liquidity(tmp_path, capsys):
     assert abs(rows[1][1] - 5986.71) < 0.001
     run_detail = conn.execute("SELECT detail FROM journal"
                               " WHERE event_type = 'run'").fetchone()[0]
-    assert "12 fetch failures" in run_detail  # all but FRED down (CFTC/Yahoo/
-    # 3 EIA/EDGAR/GDELT/IMF/ECB/XBRL/EDGAR13F — cloud + NASS keyless too)
+    assert "13 fetch failures" in run_detail  # all but FRED down; foreign_
+    # custody is FRED but WSEFINT1 isn't in the ok-payload -> zero-rows fail too
     conn.close()
 
 
