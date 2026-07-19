@@ -128,7 +128,8 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
                                 whale_ledger=whale_ledger,
                                 insider_flags=insider_flags, foreign=foreign,
                                 insider_detail=insider_detail,
-                                edgar_events=edgar_ev, best_ideas=whale_best)
+                                edgar_events=edgar_ev, best_ideas=whale_best,
+                                bearish_sells=insiders.bearish_sells(conn, as_of))
         rates = forward.base_rates(conn, as_of)
         sims = simulate.simulate(conn, as_of)
         # persist the rendered readouts: the dashboard displays EXACTLY what

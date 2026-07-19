@@ -30,7 +30,8 @@ def lines(summary: dict, weather: str, results: dict,
           foreign: dict | None = None,
           insider_detail: dict | None = None,
           edgar_events: dict | None = None,
-          best_ideas: list | None = None) -> list[str]:
+          best_ideas: list | None = None,
+          bearish_sells: list | None = None) -> list[str]:
     out = []
 
     # niche actor A2: foreign-government demand for US assets (two windows)
@@ -126,6 +127,11 @@ def lines(summary: dict, weather: str, results: dict,
 
     # research R2: each whale's highest-conviction bet ("Best Idea") — the
     # single largest 13F position, where the alpha concentrates
+    # research R2: only LARGE + majority-of-stake insider sells are bearish
+    if bearish_sells:
+        out.append("Heavy insider selling (large AND most of their stake) at: "
+                   + ", ".join(bearish_sells) + ".")
+
     strong = [b for b in (best_ideas or []) if b.get("weight", 0) >= 0.10]
     if strong:
         top = ", ".join(f"{b['name']} → {b['issuer']} ({b['weight']:.0%})"

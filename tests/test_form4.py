@@ -226,6 +226,51 @@ def test_cluster_detail_two_prior_years_not_routine(conn):
     assert detail["NVDA"]["opportunistic"] is True  # 2024,2025 only = 2 yrs
 
 
+# ── Tier-B: gated insider-sell tracking (R2 asymmetry) ───────────────────────
+
+SELL_XML = """<?xml version="1.0"?>
+<ownershipDocument>
+  <reportingOwner>
+    <reportingOwnerId><rptOwnerName>SELL SAM</rptOwnerName></reportingOwnerId>
+  </reportingOwner>
+  <nonDerivativeTable>
+    <nonDerivativeTransaction>
+      <transactionDate><value>2026-07-05</value></transactionDate>
+      <transactionCoding><transactionCode>S</transactionCode></transactionCoding>
+      <transactionAmounts>
+        <transactionShares><value>150000</value></transactionShares>
+        <transactionAcquiredDisposedCode><value>D</value></transactionAcquiredDisposedCode>
+      </transactionAmounts>
+      <postTransactionAmounts>
+        <sharesOwnedFollowingTransaction><value>50000</value></sharesOwnedFollowingTransaction>
+      </postTransactionAmounts>
+    </nonDerivativeTransaction>
+  </nonDerivativeTable>
+</ownershipDocument>"""
+
+
+def test_parse_sells_size_and_fraction():
+    sells = form4._parse_sells(SELL_XML)
+    # 150k sold, 50k left -> fraction 150k/200k = 0.75
+    assert sells == [("SELL SAM", "2026-07-05", 150000.0, pytest.approx(0.75))]
+
+
+def test_bearish_sell_gate(conn):
+    conn.executemany(
+        "INSERT INTO insider_sells VALUES (?,?,?,?,?,?,?)",
+        [("NVDA", "A", "2026-07-05", "2026-07-06", "s1", 150000, 0.75),  # both
+         ("AMD", "B", "2026-07-05", "2026-07-06", "s2", 150000, 0.20),   # small frac
+         ("INTC", "C", "2026-07-05", "2026-07-06", "s3", 5000, 0.90)])   # small size
+    assert insiders.bearish_sells(conn, "2026-07-19") == ["NVDA"]
+
+
+def test_bearish_sell_world_line():
+    from src import worldview
+    lines = worldview.lines({}, "GREEN", {}, bearish_sells=["NVDA", "AMD"])
+    assert "Heavy insider selling" in "\n".join(lines)
+    assert "NVDA, AMD" in "\n".join(lines)
+
+
 def test_10b51_footnote_detected():
     xml = FORM4_BUY.replace("</nonDerivativeTable>",
                             "</nonDerivativeTable><footnotes><footnote>"

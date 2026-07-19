@@ -81,6 +81,25 @@ def cluster_detail(conn, as_of: str) -> dict[str, dict]:
 
 ROUTINE_YEARS = 3  # CMP: same calendar month in 3+ CONSECUTIVE prior years
 
+# Research R2 (FAJ 2004, verified): insider sells are ASYMMETRIC — small sells
+# are non-bearish (mildly bullish); a sale predicts negative returns ONLY when
+# it is BOTH large in absolute size AND a large fraction of the stake.
+BEARISH_SELL_SHARES = 100_000
+BEARISH_SELL_FRACTION = 0.50
+
+
+def bearish_sells(conn, as_of: str, days: int = 2 * WINDOW_DAYS) -> list[str]:
+    """Tickers with a GATED bearish insider sale in the trailing window: a
+    sale that is BOTH >BEARISH_SELL_SHARES shares AND >BEARISH_SELL_FRACTION
+    of the seller's stake. As-of honest on the filing date. Small sales are
+    deliberately ignored — they are not a bearish signal (R2)."""
+    floor = (dt.date.fromisoformat(as_of) - dt.timedelta(days=days)).isoformat()
+    rows = conn.execute(
+        "SELECT DISTINCT ticker FROM insider_sells WHERE filing_date <= ?"
+        " AND trans_date >= ? AND shares > ? AND fraction > ? ORDER BY ticker",
+        (as_of, floor, BEARISH_SELL_SHARES, BEARISH_SELL_FRACTION)).fetchall()
+    return [r[0] for r in rows]
+
 
 def _is_routine(issuer, buyer, date, prior) -> bool:
     """The buyer bought this issuer in the same calendar month in at least

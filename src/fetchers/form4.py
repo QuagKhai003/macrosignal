@@ -50,8 +50,9 @@ def fetch(entry: dict, conn: sqlite3.Connection, session=None,
     today = today or dt.date.today()
     floor = (today - dt.timedelta(days=LOOKBACK_DAYS)).isoformat()
     cik_map = _cik_map(session)
-    seen = {row[0] for row in conn.execute(
-        "SELECT DISTINCT accession FROM insider_buys")}
+    seen = {r[0] for r in conn.execute(
+        "SELECT accession FROM insider_buys"
+        " UNION SELECT accession FROM insider_sells")}
 
     added = 0
     for ticker in tickers:
@@ -69,13 +70,20 @@ def fetch(entry: dict, conn: sqlite3.Connection, session=None,
         for acc, filing_date, doc in filings:
             if acc in seen:
                 continue
-            buys = _parse_form4(_get_doc(session, cik, acc, doc))
-            for buyer, trans_date, role, is_10b51 in buys:
+            doc_xml = _get_doc(session, cik, acc, doc)
+            for buyer, trans_date, role, is_10b51 in _parse_form4(doc_xml):
                 cur = conn.execute(
                     "INSERT OR IGNORE INTO insider_buys VALUES"
                     " (?,?,?,?,?,?,?)",
                     (ticker, buyer, trans_date, filing_date, acc, role,
                      int(is_10b51)))
+                added += cur.rowcount
+            for seller, trans_date, shares, fraction in _parse_sells(doc_xml):
+                cur = conn.execute(
+                    "INSERT OR IGNORE INTO insider_sells VALUES"
+                    " (?,?,?,?,?,?,?)",
+                    (ticker, seller, trans_date, filing_date, acc, shares,
+                     fraction))
                 added += cur.rowcount
             seen.add(acc)
     conn.commit()
@@ -114,6 +122,49 @@ def _parse_form4(xml_text: str) -> list[tuple[str, str, str, bool]]:
         if code == "P" and acquired == "A" and date:
             out.extend((owner, date, role, plan) for owner in owners)
     return out
+
+
+def _parse_sells(xml_text: str) -> list[tuple[str, str, float, float]]:
+    """(seller, transaction_date, shares, fraction) per open-market SALE
+    (code S, disposed D). fraction = shares_sold / (shares_sold + shares_
+    owned_after) — how much of the stake went. Research R2: only large AND
+    high-fraction sales are bearish; the gate lives in insiders.py, so we
+    store every sale and its size honestly here."""
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        return []
+    owners = [o.findtext("reportingOwnerId/rptOwnerName", "").strip()
+              for o in root.iter("reportingOwner")]
+    owners = [o for o in owners if o]
+    if not owners:
+        return []
+    out = []
+    for txn in root.iter("nonDerivativeTransaction"):
+        code = txn.findtext("transactionCoding/transactionCode", "").strip()
+        disposed = txn.findtext(
+            "transactionAmounts/transactionAcquiredDisposedCode/value",
+            "").strip()
+        date = txn.findtext("transactionDate/value", "").strip()
+        if code != "S" or disposed != "D" or not date:
+            continue
+        shares = _num(txn.findtext(
+            "transactionAmounts/transactionShares/value"))
+        after = _num(txn.findtext(
+            "postTransactionAmounts/sharesOwnedFollowingTransaction/value"))
+        if shares is None:
+            continue
+        denom = shares + (after or 0.0)
+        fraction = shares / denom if denom > 0 else 1.0
+        out.extend((owner, date, shares, fraction) for owner in owners)
+    return out
+
+
+def _num(text):
+    try:
+        return float((text or "").strip())
+    except ValueError:
+        return None
 
 
 def _declares_10b51(root) -> bool:
