@@ -17,8 +17,8 @@
 
 import datetime as dt
 
-from src import (alarms, classifier, db, insiders, registry, report, spine,
-                 states, weather)
+from src import (alarms, classifier, db, forward, insiders, registry, report,
+                 spine, states, weather, worldview)
 from src.fetchers import (cot, earnings, ecb, edgar, eia, fred, gdelt, imf,
                           nass, prices, whales)
 
@@ -99,6 +99,10 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
         budget = alarms.alarm_budget(conn, today)
         summary["alarms_rolling_year"] = budget["events"]
         insider_flags = insiders.current_flags(conn, as_of)
+        world = worldview.lines(summary, light["light"], market_states,
+                                whale_ledger=whale_ledger,
+                                insider_flags=insider_flags)
+        rates = forward.base_rates(conn, as_of)
         conn.execute(
             "INSERT INTO journal (date, market_id, event_type, detail,"
             " price_at_event) VALUES (?, NULL, 'run', ?, NULL)",
@@ -113,7 +117,8 @@ def main(db_path=db.DB_PATH, registry_path=registry.REGISTRY_PATH,
                        full=full, whale=whale_panel, divergence=divergence,
                        alarm_banner=budget["banner"],
                        insider_flags=insider_flags,
-                       whale_ledger=whale_ledger))
+                       whale_ledger=whale_ledger,
+                       world_lines=world, forward_stats=rates))
     print("run complete")
     return 0
 

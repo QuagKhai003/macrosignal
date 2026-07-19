@@ -37,7 +37,9 @@ def build(results: dict, prev_states: dict, week: str, weather: str = "YELLOW",
           whale: dict | None = None, divergence: bool = False,
           alarm_banner: str | None = None,
           insider_flags: dict | None = None,
-          whale_ledger: list | None = None) -> str:
+          whale_ledger: list | None = None,
+          world_lines: list | None = None,
+          forward_stats: dict | None = None) -> str:
     lines = [f"Week {week}", f"Weather: {WEATHER_PHRASE[weather]}"]
     if divergence:
         lines.append("Divergence: the pros have no spare cash while the"
@@ -67,6 +69,14 @@ def build(results: dict, prev_states: dict, week: str, weather: str = "YELLOW",
     if flagged:
         lines.append(f"Insider cluster (F13): 3+ executives bought their own"
                      f" stock within 90 days at: {', '.join(flagged)}.")
+    if world_lines:
+        lines += ["", "— The world right now —"] + list(world_lines)
+    if forward_stats:
+        from src import forward as _fwd
+        lines += ["", "— What alike-weeks did next (history, not prophecy) —"]
+        for market, r in results.items():
+            stats = forward_stats.get(market, {}).get(r["state"])
+            lines.append(f"{MARKET_NAME[market]}: {_fwd.sentence(stats)}")
     if full and whale:
         frac = "?" if whale["fraction"] is None else f"{whale['fraction']:.0%}"
         was = ("" if whale["prior_fraction"] is None
